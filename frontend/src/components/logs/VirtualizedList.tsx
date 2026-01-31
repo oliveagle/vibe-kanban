@@ -87,7 +87,7 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
     return entry ? `l-${entry.patchKey}` : index;
   };
 
-  const renderItem = (index: number, data: PatchTypeWithKey) => {
+  const renderItem = (_index: number, data: PatchTypeWithKey) => {
     const context = messageListContext;
 
     if (data.type === 'STDOUT') {
