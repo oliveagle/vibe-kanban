@@ -5,35 +5,10 @@ import './styles/index.css';
 import { ClickToComponent } from 'click-to-react-component';
 import { VibeKanbanWebCompanion } from 'vibe-kanban-web-companion';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import * as Sentry from '@sentry/react';
 import i18n from './i18n';
 import posthog from 'posthog-js';
 import { PostHogProvider } from 'posthog-js/react';
-// Import modal type definitions
 import './types/modals';
-
-import {
-  useLocation,
-  useNavigationType,
-  createRoutesFromChildren,
-  matchRoutes,
-} from 'react-router-dom';
-
-Sentry.init({
-  dsn: 'https://1065a1d276a581316999a07d5dffee26@o4509603705192449.ingest.de.sentry.io/4509605576441937',
-  tracesSampleRate: 1.0,
-  environment: import.meta.env.MODE === 'development' ? 'dev' : 'production',
-  integrations: [
-    Sentry.reactRouterV6BrowserTracingIntegration({
-      useEffect: React.useEffect,
-      useLocation,
-      useNavigationType,
-      createRoutesFromChildren,
-      matchRoutes,
-    }),
-  ],
-});
-Sentry.setTag('source', 'frontend');
 
 if (
   import.meta.env.VITE_POSTHOG_API_KEY &&
@@ -56,33 +31,54 @@ if (
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      staleTime: 1000 * 60 * 5,
       refetchOnWindowFocus: false,
     },
   },
 });
 
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Error caught by boundary:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 20, fontFamily: 'sans-serif' }}>
+          <h1>{i18n.t('common:states.error')}</h1>
+          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {this.state.error?.toString?.() || 'Unknown error'}
+          </pre>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <PostHogProvider client={posthog}>
-        <Sentry.ErrorBoundary
-          fallback={({ error }) => (
-            <div style={{ padding: 20, fontFamily: 'sans-serif' }}>
-              <h1>{i18n.t('common:states.error')}</h1>
-              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {error?.toString?.() || 'Unknown error'}
-              </pre>
-            </div>
-          )}
-          showDialog
-        >
+        <ErrorBoundary>
           <ClickToComponent />
           <VibeKanbanWebCompanion />
           <App />
-          {/*<TanStackDevtools plugins={[FormDevtoolsPlugin()]} />*/}
-          {/* <ReactQueryDevtools initialIsOpen={false} /> */}
-        </Sentry.ErrorBoundary>
+        </ErrorBoundary>
       </PostHogProvider>
     </QueryClientProvider>
   </React.StrictMode>
