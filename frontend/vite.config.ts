@@ -12,7 +12,7 @@ function executorSchemasPlugin(): Plugin {
   return {
     name: "executor-schemas-plugin",
     resolveId(id) {
-      if (id === VIRTUAL_ID) return RESOLVED_VIRTUAL_ID; // keep it virtual
+      if (id === VIRTUAL_ID) return RESOLVED_VIRTUAL_ID;
       return null;
     },
     load(id) {
@@ -28,13 +28,12 @@ function executorSchemasPlugin(): Plugin {
 
       files.forEach((file, i) => {
         const varName = `__schema_${i}`;
-        const importPath = `shared/schemas/${file}`; // uses your alias
-        const key = file.replace(/\.json$/, "").toUpperCase(); // claude_code -> CLAUDE_CODE
+        const importPath = `shared/schemas/${file}`;
+        const key = file.replace(/\.json$/, "").toUpperCase();
         imports.push(`import ${varName} from "${importPath}";`);
         entries.push(`  "${key}": ${varName}`);
       });
 
-      // IMPORTANT: pure JS (no TS types), and quote keys.
       const code = `
 ${imports.join("\n")}
 
@@ -62,10 +61,11 @@ export default defineConfig({
     },
   },
   server: {
+    host: "0.0.0.0",
     port: parseInt(process.env.FRONTEND_PORT || "3000"),
     proxy: {
       "/api": {
-        target: `http://localhost:${process.env.BACKEND_PORT || "3001"}`,
+        target: `http://127.0.0.1:${process.env.BACKEND_PORT || "3001"}`,
         changeOrigin: true,
         ws: true,
       }

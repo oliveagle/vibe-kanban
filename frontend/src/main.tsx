@@ -67,7 +67,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <PostHogProvider client={posthog}>
         <Sentry.ErrorBoundary
-          fallback={<p>{i18n.t('common:states.error')}</p>}
+          fallback={({ error }) => (
+            <div style={{ padding: 20, fontFamily: 'sans-serif' }}>
+              <h1>{i18n.t('common:states.error')}</h1>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {error?.toString?.() || 'Unknown error'}
+              </pre>
+            </div>
+          )}
           showDialog
         >
           <ClickToComponent />
