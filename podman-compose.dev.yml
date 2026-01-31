@@ -1,0 +1,90 @@
+# Development Podman Compose - Hot reload with source mounting
+# For local development with live code changes
+# 
+# Usage:
+#   podman-compose -f podman-compose.dev.yml up
+#
+# Services:
+#   - Backend API: http://localhost:3000
+#   - Frontend Dev: http://localhost:3001 (Vite HMR)
+
+services:
+  backend-dev:
+    image: rust:1.84-alpine
+    container_name: vibe-kanban-backend-dev
+    working_dir: /app
+    command: >
+      sh -c "
+        apk add --no-cache musl-dev openssl-dev pkgconfig sqlite-dev git curl bash &&
+        cargo install cargo-watch &&
+        cargo run --bin server
+      "
+    ports:
+      - "0.0.0.0:3000:3000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3000
+      - RUST_LOG=debug
+      - DISABLE_WORKTREE_ORPHAN_CLEANUP=1
+    volumes:
+      # Mount source code for hot reload
+      - ./crates:/app/crates:cached
+      - ./Cargo.toml:/app/Cargo.toml:cached
+      - ./Cargo.lock:/app/Cargo.lock:cached
+      - ./shared:/app/shared:cached
+      # Repository storage
+      - /mnt/volume3/data/repos:/repos
+      # Cargo cache
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-cache:/app/target
+      # SSH keys and config
+      - ~/.ssh:/root/.ssh:ro
+      - ~/.gitconfig:/root/.gitconfig:ro
+      - ~/.config/gh:/root/.config/gh
+    restart: unless-stopped
+    networks:
+      - vibe-kanban-dev-network
+
+  frontend-dev:
+    image: node:20-alpine
+    container_name: vibe-kanban-frontend-dev
+    working_dir: /app/frontend
+    command: >
+      sh -c "
+        npm install -g pnpm &&
+        pnpm install &&
+        pnpm run dev -- --host 0.0.0.0 --port 3001
+      "
+    ports:
+      - "0.0.0.0:3001:3001"
+    environment:
+      - VITE_PORT=3001
+      - VITE_HOST=0.0.0.0
+      - VITE_API_URL=http://localhost:3000
+    volumes:
+      # Mount frontend source for hot reload
+      - ./frontend:/app/frontend:cached
+      - ./shared:/app/shared:cached
+      - ./package.json:/app/package.json:cached
+      - ./pnpm-lock.yaml:/app/pnpm-lock.yaml:cached
+      - ./pnpm-workspace.yaml:/app/pnpm-workspace.yaml:cached
+      # Preserve node_modules
+      - frontend-node-modules:/app/frontend/node_modules
+      - root-node-modules:/app/node_modules
+    depends_on:
+      - backend-dev
+    restart: unless-stopped
+    networks:
+      - vibe-kanban-dev-network
+
+volumes:
+  cargo-cache:
+  cargo-git:
+  target-cache:
+  frontend-node-modules:
+  root-node-modules:
+
+networks:
+  vibe-kanban-dev-network:
+    driver: bridge

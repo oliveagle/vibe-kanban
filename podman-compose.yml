@@ -1,0 +1,60 @@
+# Podman Compose for vibe-kanban
+# Production deployment with separate frontend and backend containers
+# Images will be available at: ghcr.io/oliveagle/vibe-kanban/*
+
+services:
+  # Backend - Rust server
+  backend:
+    image: ghcr.io/oliveagle/vibe-kanban/backend:latest
+    container_name: vibe-kanban-backend
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "3000:3000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3000
+      - RUST_LOG=info
+    volumes:
+      # Repository storage
+      - /mnt/volume3/data/repos:/repos
+      # Data persistence
+      - backend-data:/app/data
+      # SSH keys for git operations
+      - ~/.ssh/id_rsa:/app/.ssh/id_rsa:ro
+      - ~/.ssh/id_rsa.pub:/app/.ssh/id_rsa.pub:ro
+      - ~/.ssh/known_hosts:/app/.ssh/known_hosts:ro
+      # Git config
+      - ~/.gitconfig:/app/.gitconfig:ro
+      # GitHub CLI config
+      - ~/.config/gh:/app/.config/gh
+    restart: unless-stopped
+    networks:
+      - vibe-kanban-network
+
+  # Frontend - Nginx serving React app
+  frontend:
+    image: ghcr.io/oliveagle/vibe-kanban/frontend:latest
+    container_name: vibe-kanban-frontend
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "80:80"
+    environment:
+      - NGINX_HOST=localhost
+      - NGINX_PORT=80
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - vibe-kanban-network
+
+volumes:
+  backend-data:
+    driver: local
+
+networks:
+  vibe-kanban-network:
+    driver: bridge

@@ -1,0 +1,67 @@
+name: Build and Push Container Images
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+
+jobs:
+  build-backend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Podman
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Backend Image
+        run: |
+          podman build -f Dockerfile.backend -t ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${{ github.sha }} .
+          podman tag ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${{ github.sha }} ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:latest
+
+      - name: Push Backend Image
+        if: github.event_name != 'pull_request'
+        run: |
+          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${{ github.sha }}
+          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:latest
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Podman
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Frontend Image
+        run: |
+          podman build -f Dockerfile.frontend -t ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }} .
+          podman tag ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }} ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:latest
+
+      - name: Push Frontend Image
+        if: github.event_name != 'pull_request'
+        run: |
+          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}
+          podman push ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:latest
