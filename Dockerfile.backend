@@ -35,7 +35,13 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     bash \
+    neovim \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
+
+# Install opencode
+RUN curl -fsSL https://opencode.ai/install | bash
 
 # Install GitHub CLI
 ENV GH_VERSION=2.86.0
