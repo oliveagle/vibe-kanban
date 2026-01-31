@@ -12,6 +12,9 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
+# Copy assets for rust_embed (must be before crates for correct relative path)
+COPY assets ./assets
+
 # Copy Cargo files for caching
 COPY crates ./crates
 COPY Cargo.toml Cargo.lock ./
