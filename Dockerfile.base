@@ -1,0 +1,21 @@
+# 基础构建镜像 - 包含 Rust 和 Node.js
+# 只需要构建一次,后续会重用
+FROM node:24-alpine
+
+# 安装构建依赖
+RUN apk add --no-cache \
+    curl \
+    build-base \
+    perl \
+    llvm-dev \
+    clang-dev
+
+# 允许在 musl 上链接 libclang
+ENV RUSTFLAGS="-C target-feature=-crt-static"
+
+# 安装 Rust (使用稳定版本而不是 nightly)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# 预安装全局 pnpm
+RUN npm install -g pnpm
