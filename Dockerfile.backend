@@ -8,7 +8,8 @@ RUN apk add --no-cache \
     openssl-libs-static \
     pkgconfig \
     sqlite-dev \
-    sqlite-static
+    sqlite-static \
+    clang-dev
 
 WORKDIR /app
 

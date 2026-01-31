@@ -4,19 +4,20 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy package files
-COPY package*.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package*.json ./
 COPY frontend/package*.json ./frontend/
+COPY pnpm-lock.yaml ./
 
-# Install pnpm and dependencies
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
-RUN cd frontend && pnpm install --frozen-lockfile
+# Use npm instead of pnpm for Docker builds to avoid monorepo issues
+# First, create a minimal package.json in frontend and install there
+WORKDIR /app/frontend
 
-# Copy source code
-COPY shared ./shared
-COPY frontend ./frontend
+# Copy frontend source
+COPY frontend ./
+COPY shared ../shared
 
-# Build frontend
-RUN cd frontend && pnpm run build
+# Install dependencies and build using npm
+RUN npm install && npm run build
 
 # Production stage - Nginx
 FROM nginx:alpine
