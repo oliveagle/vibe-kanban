@@ -149,87 +149,38 @@ remote-prepare-db:
 # LOCAL PRODUCTION DEPLOYMENT (Docker/Podman)
 # ===========================================
 
-# 构建生产镜像（本地预编译版本）
-docker-build:
+# 构建生产容器镜像（本地预编译版本）
+container-build:
     #!/usr/bin/env bash
     echo "Building frontend..."
-    cd frontend && pnpm run build
-    echo "Building Rust binary..."
-    cargo build --release --bin server
-    echo "Building Docker image..."
-    docker build -f Dockerfile.local -t vibe-kanban:local .
-    echo "✅ Build complete: vibe-kanban:local"
-
-# 使用 podman 构建（可选）
-podman-build:
-    #!/usr/bin/env bash
-    echo "Building frontend..."
-    cd frontend && pnpm run build
+    (cd frontend && pnpm run build)
     echo "Building Rust binary..."
     cargo build --release --bin server
     echo "Building Podman image..."
     podman build -f Dockerfile.local -t vibe-kanban:local .
     echo "✅ Build complete: vibe-kanban:local"
 
-# 启动生产容器
+# 启动生产容器（使用 podman）
 up:
-    #!/usr/bin/env bash
-    echo "Starting vibe-kanban production container..."
-    docker compose -f docker-compose.local.yml up -d
-    echo "✅ Container started on http://localhost:37825"
-    echo "Run 'just logs-container' to view logs"
-
-# 使用 podman 启动
-podman-up:
     #!/usr/bin/env bash
     echo "Starting vibe-kanban production container..."
     podman compose -f docker-compose.local.yml up -d
     echo "✅ Container started on http://localhost:37825"
     echo "Run 'just logs-container' to view logs"
 
-# 停止生产容器
+# 停止生产容器（使用 podman）
 down:
-    docker compose -f docker-compose.local.yml down
-
-# 使用 podman 停止
-podman-down:
     podman compose -f docker-compose.local.yml down
 
 # 重启生产容器
 restart: down up
 
-# 使用 podman 重启
-podman-restart: podman-down podman-up
-
-# 查看容器日志
+# 查看容器日志（使用 podman）
 logs-container:
-    docker compose -f docker-compose.local.yml logs -f
-
-# 使用 podman 查看日志
-podman-logs:
     podman compose -f docker-compose.local.yml logs -f
 
-# 生产容器健康检查
+# 生产容器健康检查（使用 podman）
 health-container:
-    #!/usr/bin/env bash
-    echo "=== Vibe Kanban Container Health Check ==="
-    echo ""
-    if docker ps --format '{{ '{{' }}.Names{{ '}}' }}' | grep -q vibe-kanban; then
-        STATUS=$(docker ps --format '{{ '{{' }}.Status{{ '}}' }}' --filter name=vibe-kanban)
-        echo "✓ Container: RUNNING ($STATUS)"
-    else
-        echo "✗ Container: NOT RUNNING"
-    fi
-    if lsof -i :37825 > /dev/null 2>&1; then
-        echo "✓ Port 37825: LISTENING"
-    else
-        echo "✗ Port 37825: NOT LISTENING"
-    fi
-    echo ""
-    echo "Run 'just logs-container' to view logs"
-
-# 使用 podman 健康检查
-podman-health:
     #!/usr/bin/env bash
     echo "=== Vibe Kanban Container Health Check ==="
     echo ""
@@ -244,6 +195,8 @@ podman-health:
     else
         echo "✗ Port 37825: NOT LISTENING"
     fi
+    echo ""
+    echo "Run 'just logs-container' to view logs"
 
 # ===========================================
 # INSTALL & SETUP
