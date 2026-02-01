@@ -40,8 +40,14 @@ RUN apt-get update && apt-get install -y \
     npm \
     && rm -rf /var/lib/apt/lists/*
 
-# Install opencode
-RUN curl -fsSL https://opencode.ai/install | bash
+# Install opencode to system path
+RUN curl -fsSL https://opencode.ai/install | bash && \
+    if [ -f /root/.local/bin/opencode ]; then \
+        cp /root/.local/bin/opencode /usr/local/bin/; \
+    elif [ -f /usr/local/bin/opencode ]; then \
+        echo "opencode already in /usr/local/bin"; \
+    fi && \
+    ls -la /usr/local/bin/opencode || echo "opencode not found in expected location"
 
 # Install GitHub CLI
 ENV GH_VERSION=2.86.0
