@@ -10,6 +10,7 @@ services:
       - PORT=3000
     volumes:
       - ${HOME}/repos:/repos:ro
+      - ${HOME}/data:/app/data:rw
       - ${HOME}/workspace:/workspace:ro
       - ${HOME}/.claude:/root/.claude:ro
       - backend-data:/root/.local/share/vibe-kanban
