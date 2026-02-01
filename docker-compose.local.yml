@@ -1,28 +1,27 @@
 # Local Production Deployment for Vibe Kanban
-# Uses pre-built local binary (Dockerfile.local)
+# Uses pre-built images from GitHub Container Registry
 
 services:
   vibe-kanban:
-    build:
-      context: .
-      dockerfile: Dockerfile.local
+    image: vibe-kanban:local
     container_name: vibe-kanban
     ports:
-      - "37825:37825"
+      - "0.0.0.0:37825:3000"
     environment:
       - HOST=0.0.0.0
-      - PORT=37825
+      - PORT=3000
     volumes:
-      # Mount your repos directory for project access
       - ${HOME}/repos:/repos:ro
-      # Mount additional workspace if needed
       - ${HOME}/workspace:/workspace:ro
-      # Optional: mount .claude for session access
       - ${HOME}/.claude:/home/appuser/.claude:ro
+      - vibe-kanban-home:/home/appuser
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:37825"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
       interval: 30s
       timeout: 3s
       start_period: 5s
       retries: 3
+
+volumes:
+  vibe-kanban-home:

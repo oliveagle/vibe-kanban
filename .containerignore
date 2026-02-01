@@ -1,6 +1,7 @@
 # Build artifacts
-target/
-frontend/dist/
+target/*
+!target/release/server
+!frontend/dist/
 frontend/node_modules/
 npx-cli/dist/
 npx-cli/node_modules/

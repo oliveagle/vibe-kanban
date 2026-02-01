@@ -1,11 +1,12 @@
 # 使用本地编译的二进制文件
-FROM alpine:latest
+FROM ubuntu:24.04
 
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     ca-certificates \
     tini \
-    libgcc \
-    wget
+    wget \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
 
 ARG POSTHOG_API_KEY
 ARG POSTHOG_API_ENDPOINT
@@ -13,8 +14,8 @@ ARG POSTHOG_API_ENDPOINT
 ENV VITE_PUBLIC_POSTHOG_KEY=$POSTHOG_API_KEY
 ENV VITE_PUBLIC_POSTHOG_HOST=$POSTHOG_API_ENDPOINT
 
-RUN addgroup -g 1001 -S appgroup && \
-    adduser -u 1001 -S appuser -G appgroup
+RUN groupadd -g 1001 appgroup && \
+    useradd -u 1001 -g appgroup -s /bin/bash appuser
 
 # 复制本地编译的二进制文件
 COPY target/release/server /usr/local/bin/server
@@ -35,5 +36,5 @@ WORKDIR /repos
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --quiet --tries=1 --spider "http://${HOST:-localhost}:${PORT:-3000}" || exit 1
 
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["server"]
