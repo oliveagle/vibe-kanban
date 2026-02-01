@@ -53,6 +53,18 @@ Do not manually edit shared/types.ts, instead edit crates/server/src/bin/generat
 - opencode requires `/root/.config/opencode/opencode.json` or `/root/.config/opencode/` directory to be detected as "installed".
 - GitHub backend image has opencode binary at `/usr/local/bin/opencode`, but config must be created manually in container.
 
+**Setup opencode in container:**
+```bash
+podman exec vibe-kanban-backend mkdir -p /root/.config/opencode
+podman exec vibe-kanban-backend touch /root/.config/opencode/opencode.json
+podman restart vibe-kanban-backend
+```
+
+**Container Network Setup:**
+- When using podman-compose, containers may not resolve each other by service name.
+- Frontend nginx must proxy to `host.containers.internal:37825` (host port) instead of `backend:3000`.
+- This is handled automatically in `nginx-frontend.conf`.
+
 ## Security & Config Tips
 - Use `.env` for local overrides; never commit secrets. Key envs: `FRONTEND_PORT`, `BACKEND_PORT`, `HOST` 
 - Dev ports and assets are managed by `scripts/setup-dev-environment.js`.
