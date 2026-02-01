@@ -83,11 +83,17 @@ const FolderPickerDialogImpl = NiceModal.create<FolderPickerDialogProps>(
           setManualPath(newPath);
         }
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : 'Failed to load directory'
-        );
+        const errorMsg = err instanceof Error ? err.message : 'Failed to load directory';
+        setError(errorMsg);
         // Reset entries to empty array on error
         setEntries([]);
+
+        // Fallback: if /app/data fails and we're at default, try root
+        if (!path && targetPath === '/app/data') {
+          console.warn('/app/data not accessible, falling back to /');
+          loadDirectory('/');
+          return;
+        }
       } finally {
         setLoading(false);
       }
