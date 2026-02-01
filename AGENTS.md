@@ -38,6 +38,21 @@ Do not manually edit shared/types.ts, instead edit crates/server/src/bin/generat
 - Rust: prefer unit tests alongside code (`#[cfg(test)]`), run `cargo test --workspace`. Add tests for new logic and edge cases.
 - Frontend: ensure `pnpm run check` and `pnpm run lint` pass. If adding runtime logic, include lightweight tests (e.g., Vitest) in the same directory.
 
+## Container Architecture
+
+### GitHub Registry Images (Production)
+- `ghcr.io/oliveagle/vibe-kanban/backend:latest` - Backend API only. **Note**: Compiled with placeholder HTML if frontend/dist missing. Serves API on port 3000.
+- `ghcr.io/oliveagle/vibe-kanban/frontend:latest` - Frontend static files only. Nginx serves on port 80, proxies `/api` to backend service.
+- **Must deploy together**: Frontend container proxies API requests to backend container via docker-compose internal network.
+
+### Local Image (Development)
+- `vibe-kanban:local` - Combined image with both frontend and backend. Use `just container-build` to create.
+- Single container serves both frontend (port 80) and API (port 3000).
+
+### Agent Detection in Containers
+- opencode requires `/root/.config/opencode/opencode.json` or `/root/.config/opencode/` directory to be detected as "installed".
+- GitHub backend image has opencode binary at `/usr/local/bin/opencode`, but config must be created manually in container.
+
 ## Security & Config Tips
 - Use `.env` for local overrides; never commit secrets. Key envs: `FRONTEND_PORT`, `BACKEND_PORT`, `HOST` 
 - Dev ports and assets are managed by `scripts/setup-dev-environment.js`.
