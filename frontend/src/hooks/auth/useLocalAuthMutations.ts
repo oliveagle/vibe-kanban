@@ -41,6 +41,7 @@ export function useLocalAuthMutations() {
       });
       return handleResponse<LocalLoginResponse>(response);
     },
+    retry: false, // Don't retry login on failure
   });
 
   const statusMutation = useMutation({
@@ -49,6 +50,8 @@ export function useLocalAuthMutations() {
       const response = await fetch('/api/auth/local/status');
       return handleResponse<LocalAuthStatusResponse>(response);
     },
+    retry: 1, // Only retry once for status check
+    retryDelay: 2000, // Wait 2 seconds before retry
   });
 
   return {
