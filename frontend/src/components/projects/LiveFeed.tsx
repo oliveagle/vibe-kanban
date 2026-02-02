@@ -53,7 +53,7 @@ function TaskItem({ taskId, title, status, projectName, projectId, hasInProgress
   const navigate = useNavigate();
 
   const handleClick = () => {
-    navigate(`/projects/${projectId}/tasks/${taskId}`);
+    navigate(`/projects/${projectId}/tasks/${taskId}/attempts/latest`);
   };
 
   return (
