@@ -38,7 +38,16 @@ RUN apt-get update && apt-get install -y \
     neovim \
     nodejs \
     npm \
+    iproute2 \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Lightpanda browser
+RUN curl -L -o /usr/local/bin/lightpanda \
+    https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux && \
+    chmod a+x /usr/local/bin/lightpanda
+
+# Install Playwright
+RUN mkdir -p /opt && cd /opt && npm init -y && npm install playwright
 
 # Install opencode via npm globally
 RUN npm install -g opencode-ai && \
