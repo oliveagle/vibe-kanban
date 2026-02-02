@@ -98,3 +98,65 @@ podman pull ghcr.io/oliveagle/vibe-kanban/frontend:0.0.145
 **Local development images:**
 - Tag local builds with version: `vibe-kanban:local-0.0.145`
 - Keep `vibe-kanban:local` as latest local build
+
+## Browser Automation in Backend Container
+
+The backend container (`vibe-kanban-backend`) has browser automation tools installed for testing and debugging.
+
+### Lightpanda Browser
+
+Lightpanda is a lightweight, headless browser that supports CDP (Chrome DevTools Protocol).
+
+**Installation:**
+```bash
+podman exec vibe-kanban-backend sh -c "
+  export https_proxy=http://host.containers.internal:1080
+  curl -L -o /usr/local/bin/lightpanda \
+    https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux
+  chmod a+x /usr/local/bin/lightpanda
+"
+```
+
+**Start CDP server:**
+```bash
+podman exec vibe-kanban-backend /usr/local/bin/lightpanda serve --host 0.0.0.0 --port 9222
+```
+
+**Fetch page content:**
+```bash
+podman exec vibe-kanban-backend /usr/local/bin/lightpanda fetch --dump http://localhost:3000/projects
+```
+
+### Playwright with Lightpanda
+
+Playwright is installed in `/opt` directory and can connect to Lightpanda via CDP.
+
+**Installation:**
+```bash
+podman exec vibe-kanban-backend sh -c "
+  cd /opt
+  export https_proxy=http://host.containers.internal:1080
+  npm install playwright
+"
+```
+
+**Usage example:**
+```javascript
+const { chromium } = require('playwright');
+
+(async () => {
+  const browser = await chromium.connectOverCDP('ws://localhost:9222/');
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto('http://localhost:3000/projects');
+  // Note: screenshot is not yet supported by Lightpanda
+  const content = await page.content();
+  console.log(content);
+  await browser.close();
+})();
+```
+
+**Limitations:**
+- Lightpanda is still in development, some features like screenshots are not yet supported
+- WebSocket is not fully supported in Lightpanda
+- For full Playwright features, consider using the standard Playwright with Chromium
