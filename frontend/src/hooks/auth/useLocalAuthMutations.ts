@@ -1,5 +1,4 @@
 import { useMutation } from '@tanstack/react-query';
-import { handleApiResponse } from '@/lib/api';
 
 interface LocalLoginCredentials {
   username: string;
@@ -19,39 +18,36 @@ interface LocalAuthStatusResponse {
   message: string;
 }
 
-const makeRequest = async (url: string, options: RequestInit = {}) => {
-  const headers = new Headers(options.headers ?? {});
-  if (!headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
+const handleResponse = async <T,>(response: Response): Promise<T> => {
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || `HTTP ${response.status}`);
   }
-
-  return fetch(url, {
-    ...options,
-    headers,
-  });
+  const data = await response.json();
+  if (!data.success) {
+    throw new Error(data.message || 'Request failed');
+  }
+  return data.data;
 };
 
 export function useLocalAuthMutations() {
   const loginMutation = useMutation({
     mutationKey: ['auth', 'local', 'login'],
     mutationFn: async (credentials: LocalLoginCredentials) => {
-      const response = await makeRequest('/api/auth/local/login', {
+      const response = await fetch('/api/auth/local/login', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
       });
-      
-      return handleApiResponse<LocalLoginResponse>(response);
+      return handleResponse<LocalLoginResponse>(response);
     },
   });
 
   const statusMutation = useMutation({
     mutationKey: ['auth', 'local', 'status'],
     mutationFn: async () => {
-      const response = await makeRequest('/api/auth/local/status', {
-        method: 'GET',
-      });
-      
-      return handleApiResponse<LocalAuthStatusResponse>(response);
+      const response = await fetch('/api/auth/local/status');
+      return handleResponse<LocalAuthStatusResponse>(response);
     },
   });
 

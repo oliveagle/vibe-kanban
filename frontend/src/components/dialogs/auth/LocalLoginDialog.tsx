@@ -23,7 +23,6 @@ export function LocalLoginDialog({
   const [error, setError] = useState<string | null>(null);
   const { login, status } = useLocalAuthMutations();
 
-  // Check if local auth is enabled when dialog opens
   useEffect(() => {
     if (isOpen) {
       setIsCheckingStatus(true);
@@ -44,7 +43,9 @@ export function LocalLoginDialog({
       setLocalAuthEnabled(true);
       setError(null);
     }
-  }, [isOpen, status]);
+    // Note: status is intentionally excluded from deps to prevent infinite loop
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
