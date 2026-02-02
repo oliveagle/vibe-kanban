@@ -1,0 +1,25 @@
+FROM ghcr.io/oliveagle/vibe-kanban/backend:latest
+
+# Install additional tools (ripgrep, fd-find)
+RUN apt-get update -qq && apt-get install -y --no-install-recommends ripgrep fd-find && rm -rf /var/lib/apt/lists/*
+
+# Create opencode config directory
+RUN mkdir -p /root/.config/opencode && \
+    touch /root/.config/opencode/opencode.json
+
+# Create default opencode config with kimi model
+RUN echo '{\"$schema\": \"https://opencode.ai/config.json\", \"model\": \"kimi/kimi-k2.5-free\"}' > /root/.config/opencode/opencode.json
+
+
+
+ENV HOST=0.0.0.0
+ENV PORT=3000
+ENV RUST_LOG=info
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider "http://${HOST:-localhost}:${PORT:-3000}" || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["server"]

@@ -1,7 +1,7 @@
 use axum::{
     Router,
     extract::{Json, Query, State},
-    http::{Response, StatusCode},
+    http::{Response, StatusCode, HeaderMap},
     response::Json as ResponseJson,
     routing::{get, post},
 };
@@ -374,7 +374,27 @@ async fn get_token(
 
 async fn get_current_user(
     State(deployment): State<DeploymentImpl>,
+    headers: HeaderMap,
 ) -> Result<ResponseJson<ApiResponse<CurrentUserResponse>>, ApiError> {
+    // Check for Authorization header first (for local auth)
+    if let Some(auth_header) = headers.get("authorization") {
+        if let Ok(auth_str) = auth_header.to_str() {
+            if auth_str.starts_with("Bearer ") {
+                let token = &auth_str[7..];
+                // Try to validate as local auth token
+                if deployment.local_auth_enabled() {
+                    let local_auth = deployment.local_auth();
+                    if let Ok((user_id, _username)) = local_auth.validate_token(token) {
+                        return Ok(ResponseJson(ApiResponse::success(CurrentUserResponse {
+                            user_id,
+                        })));
+                    }
+                }
+            }
+        }
+    }
+
+    // Fall back to remote client (OAuth)
     let remote_client = deployment.remote_client()?;
 
     // Get the access token from remote client

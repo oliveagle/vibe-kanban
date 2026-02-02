@@ -116,6 +116,12 @@ const makeRequest = async (url: string, options: RequestInit = {}) => {
     headers.set('Content-Type', 'application/json');
   }
 
+  // Add Authorization header if token exists
+  const token = localStorage.getItem('access_token');
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
   return fetch(url, {
     ...options,
     headers,
