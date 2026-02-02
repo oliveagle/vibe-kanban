@@ -91,8 +91,8 @@ function TaskItem({ title, status, projectName, projectId, hasInProgressAttempt 
 }
 
 export function LiveFeed() {
-  const { inProgressTasks, todoTasks, isLoading } = useLiveFeed();
-  const allTasks = [...inProgressTasks, ...todoTasks];
+  const { doingTasks, inReviewTasks, isLoading } = useLiveFeed();
+  const allTasks = [...doingTasks, ...inReviewTasks];
 
   return (
     <Card className="h-full flex flex-col">
@@ -119,14 +119,14 @@ export function LiveFeed() {
           </div>
         ) : (
           <div className="h-[calc(100vh-200px)] overflow-y-auto">
-            {inProgressTasks.length > 0 && (
+            {doingTasks.length > 0 && (
               <div className="mb-4">
                 <div className="px-4 py-2 bg-blue-50 dark:bg-blue-900/20">
                   <p className="text-xs font-medium text-blue-600 dark:text-blue-400">
-                    进行中 ({inProgressTasks.length})
+                    Doing ({doingTasks.length})
                   </p>
                 </div>
-                {inProgressTasks.map((task) => (
+                {doingTasks.map((task) => (
                   <TaskItem
                     key={task.id}
                     title={task.title}
@@ -138,14 +138,14 @@ export function LiveFeed() {
                 ))}
               </div>
             )}
-            {todoTasks.length > 0 && (
+            {inReviewTasks.length > 0 && (
               <div>
-                <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/50">
-                  <p className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                    待办 ({todoTasks.length})
+                <div className="px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20">
+                  <p className="text-xs font-medium text-yellow-600 dark:text-yellow-400">
+                    In Review ({inReviewTasks.length})
                   </p>
                 </div>
-                {todoTasks.map((task) => (
+                {inReviewTasks.map((task) => (
                   <TaskItem
                     key={task.id}
                     title={task.title}

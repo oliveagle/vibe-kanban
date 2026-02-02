@@ -11,7 +11,6 @@ interface LiveTask extends TaskWithAttemptStatus {
 export function useLiveFeed() {
   const { projects } = useProjects();
 
-  // Fetch tasks for all projects
   const projectQueries = useQuery({
     queryKey: ['live-feed-tasks'],
     queryFn: async () => {
@@ -19,18 +18,20 @@ export function useLiveFeed() {
       
       for (const project of projects) {
         try {
-          const response = await fetch(`/api/projects/${project.id}/tasks`);
+          const response = await fetch(`/api/tasks?project_id=${project.id}`);
           if (!response.ok) continue;
           
           const data = await response.json();
           if (data.success && Array.isArray(data.data)) {
-            const inProgressTasks = data.data.filter(
+            const activeTasks = data.data.filter(
               (task: TaskWithAttemptStatus) => 
                 task.status === 'inprogress' || 
+                task.status === 'inreview' ||
+                task.status === 'todo' ||
                 task.has_in_progress_attempt
             );
             
-            inProgressTasks.forEach((task: TaskWithAttemptStatus) => {
+            activeTasks.forEach((task: TaskWithAttemptStatus) => {
               allTasks.push({
                 ...task,
                 projectName: project.name,
@@ -46,13 +47,12 @@ export function useLiveFeed() {
       return allTasks;
     },
     enabled: projects.length > 0,
-    refetchInterval: 5000, // Refresh every 5 seconds
+    refetchInterval: 5000,
   });
 
-  const { inProgressTasks, todoTasks } = useMemo(() => {
+  const { doingTasks, inReviewTasks } = useMemo(() => {
     const tasks = projectQueries.data || [];
     
-    // Sort by updated_at descending
     const sorted = tasks.sort((a, b) => {
       const aTime = new Date(a.updated_at || a.created_at).getTime();
       const bTime = new Date(b.updated_at || b.created_at).getTime();
@@ -60,14 +60,14 @@ export function useLiveFeed() {
     });
 
     return {
-      inProgressTasks: sorted.filter(t => t.status === 'inprogress'),
-      todoTasks: sorted.filter(t => t.status === 'todo'),
+      doingTasks: sorted.filter(t => t.status === 'inprogress' || t.has_in_progress_attempt),
+      inReviewTasks: sorted.filter(t => t.status === 'inreview'),
     };
   }, [projectQueries.data]);
 
   return {
-    inProgressTasks,
-    todoTasks,
+    doingTasks,
+    inReviewTasks,
     isLoading: projectQueries.isLoading,
     error: projectQueries.error,
   };
