@@ -81,7 +81,9 @@ const OAuthDialogImpl = NiceModal.create<NoProps>(() => {
     };
     
     checkLocalAuthStatus();
-  }, [status]);
+    // Run only once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Poll for auth status using proper query hook
   const { data: statusData, isError: isStatusError } = useAuthStatus({
