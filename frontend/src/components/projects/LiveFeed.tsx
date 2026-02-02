@@ -59,12 +59,12 @@ function TaskItem({ taskId, title, status, projectName, projectId, hasInProgress
   return (
     <div
       onClick={handleClick}
-      className="p-3 border-b last:border-b-0 cursor-pointer hover:bg-muted/50 transition-colors group"
+      className="p-3 border-b last:border-b-0 cursor-pointer hover:bg-accent transition-colors group"
     >
       <div className="flex items-start gap-3">
         <div className={`mt-1 w-2 h-2 rounded-full ${getStatusColor(status)} flex-shrink-0`} />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">
+          <p className="text-sm font-medium truncate">
             {title}
           </p>
           <div className="flex items-center gap-2 mt-1">

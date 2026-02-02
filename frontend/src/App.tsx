@@ -131,7 +131,7 @@ function AppContent() {
     <I18nextProvider i18n={i18n}>
       <ThemeProvider initialTheme={config?.theme || ThemeMode.SYSTEM}>
         <SearchProvider>
-          <div className="h-screen flex flex-col bg-background">
+          <div className="h-screen flex flex-col bg-background overflow-hidden">
             <SentryRoutes>
               {/* VS Code full-page logs route (outside NormalLayout for minimal UI) */}
               <Route

@@ -49,7 +49,7 @@ export function ProjectList() {
   }, [projects, focusedProjectId]);
 
   return (
-    <div className="h-full flex gap-6 p-8 pb-16 md:pb-8 overflow-hidden">
+    <div className="h-full flex gap-6 p-8 overflow-hidden">
       {/* Left Column - Project List */}
       <div className="flex-1 space-y-6 overflow-auto min-w-0">
         <div className="flex justify-between items-center">
