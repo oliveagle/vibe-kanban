@@ -25,6 +25,7 @@ services:
       - opencode-skills:/root/.config/opencode/skills
       - opencode-commands:/root/.config/opencode/commands
       - opencode-cache:/root/.cache/opencode
+      - backend-persistent:/root/.persistent
     restart: unless-stopped
     networks:
       - vibe-kanban-net
@@ -46,6 +47,7 @@ services:
 volumes:
   backend-data:
   backend-cache:
+  backend-persistent:
   opencode-cache:
   opencode-transcripts:
   opencode-todos:
