@@ -68,3 +68,33 @@ podman restart vibe-kanban-backend
 ## Security & Config Tips
 - Use `.env` for local overrides; never commit secrets. Key envs: `FRONTEND_PORT`, `BACKEND_PORT`, `HOST` 
 - Dev ports and assets are managed by `scripts/setup-dev-environment.js`.
+
+## Version Management
+
+### Version Number Synchronization
+All package.json files must maintain the same version number:
+- `package.json` (root) - Source of truth
+- `npx-cli/package.json` - Must match root
+- `frontend/package.json` - Must match root
+
+**When updating version:**
+1. Update root `package.json` version
+2. Update `npx-cli/package.json` to match
+3. Update `frontend/package.json` to match
+4. Commit all changes together
+
+### Container Image Versioning
+Container images are tagged with version numbers from `package.json`:
+- `ghcr.io/oliveagle/vibe-kanban/backend:0.0.145`
+- `ghcr.io/oliveagle/vibe-kanban/frontend:0.0.145`
+
+**For rollbacks:**
+```bash
+# Use specific version instead of latest
+podman pull ghcr.io/oliveagle/vibe-kanban/backend:0.0.145
+podman pull ghcr.io/oliveagle/vibe-kanban/frontend:0.0.145
+```
+
+**Local development images:**
+- Tag local builds with version: `vibe-kanban:local-0.0.145`
+- Keep `vibe-kanban:local` as latest local build
