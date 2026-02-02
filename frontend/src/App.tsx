@@ -5,6 +5,7 @@ import i18n from '@/i18n';
 import { Projects } from '@/pages/Projects';
 import { ProjectTasks } from '@/pages/ProjectTasks';
 import { FullAttemptLogsPage } from '@/pages/FullAttemptLogs';
+import { LandingPage } from '@/pages/LandingPage';
 import { NormalLayout } from '@/components/layout/NormalLayout';
 import { usePostHog } from 'posthog-js/react';
 import { useAuth } from '@/hooks';
@@ -112,6 +113,17 @@ function AppContent() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader message="Loading..." size={32} />
       </div>
+    );
+  }
+
+  // Show landing page if user is not signed in
+  if (!isSignedIn) {
+    return (
+      <I18nextProvider i18n={i18n}>
+        <ThemeProvider initialTheme={config?.theme || ThemeMode.SYSTEM}>
+          <LandingPage />
+        </ThemeProvider>
+      </I18nextProvider>
     );
   }
 
