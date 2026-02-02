@@ -1,10 +1,9 @@
-import { useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { Github, Chrome, User } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useAuthMutations } from '@/hooks/auth/useAuthMutations';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
 import { useLocalAuthMutations } from '@/hooks/auth/useLocalAuthMutations';
 import { LocalLoginDialog } from '@/components/dialogs/auth/LocalLoginDialog';
-import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks';
 import { useUserSystem } from '@/components/ConfigProvider';
 import { Loader } from '@/components/ui/loader';
@@ -15,21 +14,6 @@ export function LandingPage() {
   const { isSignedIn, isLoaded } = useAuth();
   const { reloadSystem } = useUserSystem();
   const { status } = useLocalAuthMutations();
-
-  const { initHandoff } = useAuthMutations({
-    onInitSuccess: (data) => {
-      const width = 600;
-      const height = 700;
-      const left = window.screenX + (window.outerWidth - width) / 2;
-      const top = window.screenY + (window.outerHeight - height) / 2;
-
-      window.open(
-        data.authorize_url,
-        'oauth-popup',
-        `width=${width},height=${height},left=${left},top=${top},popup=yes,noopener=yes`
-      );
-    },
-  });
 
   useEffect(() => {
     const checkStatus = async () => {
@@ -42,16 +26,6 @@ export function LandingPage() {
     };
     checkStatus();
   }, []);
-
-  const handleGitHubLogin = useCallback(() => {
-    const returnTo = `${window.location.origin}/api/auth/handoff/complete`;
-    initHandoff.mutate({ provider: 'github', returnTo });
-  }, [initHandoff]);
-
-  const handleGoogleLogin = useCallback(() => {
-    const returnTo = `${window.location.origin}/api/auth/handoff/complete`;
-    initHandoff.mutate({ provider: 'google', returnTo });
-  }, [initHandoff]);
 
   if (!isLoaded) {
     return (
@@ -67,61 +41,83 @@ export function LandingPage() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full space-y-8 text-center">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+      <Card className="w-full max-w-md space-y-6">
+        <CardHeader>
+          <CardTitle className="text-center text-2xl font-bold">
             Vibe Kanban
-          </h1>
-          <p className="text-muted-foreground text-lg">
+          </CardTitle>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          <p className="text-center text-muted-foreground text-lg mb-4">
             登录以加入组织并与团队共享任务
           </p>
-        </div>
 
-        <div className="space-y-3">
-          <Button
-            variant="outline"
-            className="w-full h-12 flex items-center justify-center gap-3"
-            onClick={handleGitHubLogin}
-            disabled={initHandoff.isPending}
-          >
-            <Github className="h-5 w-5" />
-            <span>使用 GitHub 继续</span>
-          </Button>
+          <div className="space-y-3">
+            <button
+              onClick={() => {
+                const returnTo = `${window.location.origin}/api/auth/handoff/complete`;
+                const width = 600;
+                const height = 700;
+                const left = window.screenX + (window.outerWidth - width) / 2;
+                const top = window.screenY + (window.outerHeight - height) / 2;
 
-          <Button
-            variant="outline"
-            className="w-full h-12 flex items-center justify-center gap-3"
-            onClick={handleGoogleLogin}
-            disabled={initHandoff.isPending}
-          >
-            <Chrome className="h-5 w-5" />
-            <span>使用 Google 继续</span>
-          </Button>
-
-          {localAuthEnabled && (
-            <Button
-              variant="outline"
-              className="w-full h-12 flex items-center justify-center gap-3"
-              onClick={() => setShowLocalLogin(true)}
+                window.open(
+                  `https://github.com/login/oauth/authorize?client_id=Ov23liuWU1aV2A9W4G7&redirect_uri=${encodeURIComponent(returnTo)}&scope=user:email`,
+                  'oauth-popup',
+                  `width=${width},height=${height},left=${left},top=${top},popup=yes,noopener=yes`
+                );
+              }}
+              className="w-full h-14 flex items-center justify-center gap-3 bg-white border border-gray-300 hover:bg-gray-50 transition-colors rounded-lg"
             >
-              <User className="h-5 w-5" />
-              <span>使用用户名密码登录</span>
-            </Button>
-          )}
-        </div>
+              <Github className="h-6 w-6 text-gray-700" />
+              <span className="text-lg font-medium text-gray-900">使用 GitHub 继续</span>
+            </button>
 
-        <p className="text-sm text-muted-foreground">
-          登录即表示您同意我们的服务条款
-        </p>
-      </div>
+            <button
+              onClick={() => {
+                const returnTo = `${window.location.origin}/api/auth/handoff/complete`;
+                const width = 600;
+                const height = 700;
+                const left = window.screenX + (window.outerWidth - width) / 2;
+                const top = window.screenY + (window.outerHeight - height) / 2;
 
-      <LocalLoginDialog
-        isOpen={showLocalLogin}
-        onOpenChange={setShowLocalLogin}
-        onLoginSuccess={() => {
-          reloadSystem();
-        }}
-      />
+                window.open(
+                  `https://accounts.google.com/o/oauth2/v2/auth?client_id=86074196785563-7p8h2t7g8k3t1m16l6q7&redirect_uri=${encodeURIComponent(returnTo)}&response_type=token&scope=https://www.googleapis.com/auth/userinfo.email`,
+                  'oauth-popup',
+                  `width=${width},height=${height},left=${left},top=${top},popup=yes,noopener=yes`
+                );
+              }}
+              className="w-full h-14 flex items-center justify-center gap-3 bg-white border border-gray-300 hover:bg-gray-50 transition-colors rounded-lg"
+            >
+              <Chrome className="h-6 w-6 text-gray-700" />
+              <span className="text-lg font-medium text-gray-900">使用 Google 继续</span>
+            </button>
+
+            {localAuthEnabled && (
+              <button
+                onClick={() => setShowLocalLogin(true)}
+                className="w-full h-14 flex items-center justify-center gap-3 bg-white border border-gray-300 hover:bg-gray-50 transition-colors rounded-lg"
+              >
+                <User className="h-6 w-6 text-gray-700" />
+                <span className="text-lg font-medium text-gray-900">使用用户名密码登录</span>
+              </button>
+            )}
+          </div>
+
+          <p className="text-center text-xs text-muted-foreground mt-4">
+            登录即表示您同意我们的服务条款
+          </p>
+        </CardContent>
+
+        <LocalLoginDialog
+          isOpen={showLocalLogin}
+          onOpenChange={setShowLocalLogin}
+          onLoginSuccess={() => {
+            reloadSystem();
+          }}
+        />
+      </Card>
     </div>
   );
 }
