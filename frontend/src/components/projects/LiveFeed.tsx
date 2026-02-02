@@ -41,6 +41,7 @@ function getStatusLabel(status: TaskStatus): string {
 }
 
 interface TaskItemProps {
+  taskId: string;
   title: string;
   status: TaskStatus;
   projectName: string;
@@ -48,11 +49,11 @@ interface TaskItemProps {
   hasInProgressAttempt?: boolean;
 }
 
-function TaskItem({ title, status, projectName, projectId, hasInProgressAttempt }: TaskItemProps) {
+function TaskItem({ taskId, title, status, projectName, projectId, hasInProgressAttempt }: TaskItemProps) {
   const navigate = useNavigate();
 
   const handleClick = () => {
-    navigate(`/projects/${projectId}/tasks`);
+    navigate(`/projects/${projectId}/tasks/${taskId}`);
   };
 
   return (
@@ -129,6 +130,7 @@ export function LiveFeed() {
                 {doingTasks.map((task) => (
                   <TaskItem
                     key={task.id}
+                    taskId={task.id}
                     title={task.title}
                     status={task.status}
                     projectName={task.projectName}
@@ -148,6 +150,7 @@ export function LiveFeed() {
                 {inReviewTasks.map((task) => (
                   <TaskItem
                     key={task.id}
+                    taskId={task.id}
                     title={task.title}
                     status={task.status}
                     projectName={task.projectName}
