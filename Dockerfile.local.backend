@@ -1,0 +1,57 @@
+# Local Backend Dockerfile - 使用本地编译的二进制文件
+# 类似于 ghcr.io/oliveagle/vibe-kanban/backend:latest
+FROM ubuntu:24.04
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    tini \
+    wget \
+    curl \
+    libssl3 \
+    git \
+    openssh-client \
+    bash \
+    neovim \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install opencode via npm globally
+RUN npm install -g opencode-ai && \
+    ln -s $(which opencode) /usr/local/bin/opencode || true
+
+# Install GitHub CLI
+ENV GH_VERSION=2.86.0
+RUN cd /tmp && \
+    curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" -o gh.tar.gz && \
+    tar -xzf gh.tar.gz && \
+    mv "gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/ && \
+    rm -rf "gh_${GH_VERSION}_linux_amd64" gh.tar.gz && \
+    chmod +x /usr/local/bin/gh
+
+# 创建 app 用户
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+
+# 复制本地编译的二进制文件（需要预先构建）
+COPY target/release/server /usr/local/bin/server
+
+# 创建必要的目录
+RUN mkdir -p /repos /app/data && \
+    chown -R appuser:appgroup /repos /app
+
+# 创建 home 目录兼容性软链接
+RUN mkdir -p /home && ln -sf /repos /home/appuser
+
+USER appuser
+
+ENV HOST=0.0.0.0
+ENV PORT=3000
+ENV RUST_LOG=info
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider "http://${HOST:-localhost}:${PORT:-3000}" || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["server"]

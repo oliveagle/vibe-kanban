@@ -46,6 +46,97 @@ pub fn router() -> Router<DeploymentImpl> {
         .route("/auth/status", get(status))
         .route("/auth/token", get(get_token))
         .route("/auth/user", get(get_current_user))
+        .route("/auth/local/login", post(local_login))
+        .route("/auth/local/status", get(local_auth_status))
+}
+
+#[derive(Debug, Deserialize)]
+struct LocalLoginRequest {
+    username: String,
+    password: String,
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+struct LocalLoginResponse {
+    access_token: String,
+    expires_at: DateTime<Utc>,
+    user_id: String,
+    username: String,
+}
+
+async fn local_login(
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<LocalLoginRequest>,
+) -> Result<ResponseJson<ApiResponse<LocalLoginResponse>>, ApiError> {
+    use services::services::local_auth::LocalAuthError;
+    
+    let local_auth = deployment.local_auth();
+    
+    match local_auth.login(&payload.username, &payload.password).await {
+        Ok(auth_response) => {
+            let credentials = Credentials {
+                access_token: Some(auth_response.access_token.clone()),
+                refresh_token: auth_response.access_token.clone(),
+                expires_at: Some(auth_response.expires_at),
+            };
+            
+            deployment.auth_context()
+                .save_credentials(&credentials)
+                .await
+                .map_err(|e| {
+                    tracing::error!(?e, "Failed to save local auth credentials");
+                    ApiError::Io(e)
+                })?;
+            
+            let user_uuid = Uuid::parse_str(&auth_response.user_id)
+                .map_err(|e| {
+                    tracing::error!(?e, "Failed to parse user ID as UUID");
+                    ApiError::BadRequest("Invalid user ID format".to_string())
+                })?;
+            
+            let profile = utils::api::oauth::ProfileResponse {
+                user_id: user_uuid,
+                username: Some(auth_response.username.clone()),
+                email: format!("{}@local", auth_response.username),
+                providers: vec![utils::api::oauth::ProviderProfile {
+                    provider: "local".to_string(),
+                    username: Some(auth_response.username.clone()),
+                    display_name: Some(auth_response.username.clone()),
+                    email: Some(format!("{}@local", auth_response.username)),
+                    avatar_url: None,
+                }],
+            };
+            deployment.auth_context().set_profile(profile).await;
+            
+            Ok(ResponseJson(ApiResponse::success(LocalLoginResponse {
+                access_token: auth_response.access_token,
+                expires_at: auth_response.expires_at,
+                user_id: auth_response.user_id,
+                username: auth_response.username,
+            })))
+        }
+        Err(LocalAuthError::InvalidCredentials) => {
+            Err(ApiError::Unauthorized)
+        }
+        Err(e) => {
+            tracing::error!(?e, "Local auth login error");
+            Err(ApiError::BadRequest(e.to_string()))
+        }
+    }
+}
+
+async fn local_auth_status(
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<serde_json::Value>>, ApiError> {
+    let enabled = deployment.local_auth_enabled();
+    let (default_username, _) = services::services::local_auth::LocalAuthService::get_default_credentials();
+    
+    Ok(ResponseJson(ApiResponse::success(serde_json::json!({
+        "enabled": enabled,
+        "default_username": default_username,
+        "message": "Configure credentials using AUTH_USERNAME and AUTH_PASSWORD environment variables",
+    }))))
 }
 
 #[derive(Debug, Deserialize)]

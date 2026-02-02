@@ -15,6 +15,7 @@ use services::services::{
     filesystem::FilesystemService,
     git::GitService,
     image::ImageService,
+    local_auth::LocalAuthService,
     oauth_credentials::OAuthCredentials,
     project::ProjectService,
     queued_message::QueuedMessageService,
@@ -56,6 +57,8 @@ pub struct LocalDeployment {
     remote_client: Result<RemoteClient, RemoteClientNotConfigured>,
     auth_context: AuthContext,
     oauth_handoffs: Arc<RwLock<HashMap<Uuid, PendingHandoff>>>,
+    local_auth: LocalAuthService,
+    local_auth_enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -166,6 +169,21 @@ impl Deployment for LocalDeployment {
 
         let oauth_handoffs = Arc::new(RwLock::new(HashMap::new()));
 
+        let local_auth = LocalAuthService::new(&db);
+        let local_auth_enabled = std::env::var("ENABLE_LOCAL_AUTH")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(true);
+        
+        if local_auth_enabled {
+            if let Err(e) = local_auth.initialize().await {
+                tracing::warn!(?e, "Failed to initialize local auth service");
+            } else {
+                let (username, password) = services::services::local_auth::LocalAuthService::get_default_credentials();
+                tracing::info!("Local authentication enabled. Configure credentials using AUTH_USERNAME and AUTH_PASSWORD environment variables");
+                tracing::info!("Current credentials - Username: {}, Password: {}", username, password);
+            }
+        }
+
         // We need to make analytics accessible to the ContainerService
         // TODO: Handle this more gracefully
         let analytics_ctx = analytics.as_ref().map(|s| AnalyticsContext {
@@ -209,6 +227,8 @@ impl Deployment for LocalDeployment {
             remote_client,
             auth_context,
             oauth_handoffs,
+            local_auth,
+            local_auth_enabled,
         };
 
         Ok(deployment)
@@ -339,5 +359,13 @@ impl LocalDeployment {
 
     pub fn share_config(&self) -> Option<&ShareConfig> {
         self.share_config.as_ref()
+    }
+
+    pub fn local_auth(&self) -> &LocalAuthService {
+        &self.local_auth
+    }
+
+    pub fn local_auth_enabled(&self) -> bool {
+        self.local_auth_enabled
     }
 }

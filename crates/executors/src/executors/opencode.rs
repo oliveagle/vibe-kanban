@@ -165,5 +165,9 @@ fn setup_approvals_env(auto_approve: bool, env: &ExecutionEnv) -> ExecutionEnv {
     if !auto_approve && !env.contains_key("OPENCODE_PERMISSION") {
         env.insert("OPENCODE_PERMISSION", r#"{"edit": "ask", "bash": "ask", "webfetch": "ask", "doom_loop": "ask", "external_directory": "ask"}"#);
     }
+    // Set CLAUDE_CONFIG_DIR to point to opencode config directory for oh-my-opencode plugin
+    if !env.contains_key("CLAUDE_CONFIG_DIR") {
+        env.insert("CLAUDE_CONFIG_DIR", "/root/.config/opencode");
+    }
     env
 }

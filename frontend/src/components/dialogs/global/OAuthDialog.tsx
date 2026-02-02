@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { LogIn, Github, Loader2, Chrome } from 'lucide-react';
+import { LogIn, Github, Loader2, Chrome, User } from 'lucide-react';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuthMutations } from '@/hooks/auth/useAuthMutations';
@@ -17,6 +17,8 @@ import { useUserSystem } from '@/components/ConfigProvider';
 import type { ProfileResponse } from 'shared/types';
 import { useTranslation } from 'react-i18next';
 import { defineModal, type NoProps } from '@/lib/modals';
+import { LocalLoginDialog } from '@/components/dialogs/auth/LocalLoginDialog';
+import { useLocalAuthMutations } from '@/hooks/auth/useLocalAuthMutations';
 
 type OAuthProvider = 'github' | 'google';
 
@@ -31,6 +33,7 @@ const OAuthDialogImpl = NiceModal.create<NoProps>(() => {
   const { t } = useTranslation('common');
   const { reloadSystem } = useUserSystem();
   const [state, setState] = useState<OAuthState>({ type: 'select' });
+  const [showLocalLogin, setShowLocalLogin] = useState(false);
   const popupRef = useRef<Window | null>(null);
   const [isPolling, setIsPolling] = useState(false);
 
@@ -62,6 +65,23 @@ const OAuthDialogImpl = NiceModal.create<NoProps>(() => {
       });
     },
   });
+  
+  // Local auth mutations
+  const { status } = useLocalAuthMutations();
+  
+  // Check if local auth is enabled when component mounts
+  useEffect(() => {
+    const checkLocalAuthStatus = async () => {
+      try {
+        await status.mutateAsync();
+      } catch (error) {
+        // Local auth might not be available, that's fine
+        console.debug('Local auth status check failed:', error);
+      }
+    };
+    
+    checkLocalAuthStatus();
+  }, [status]);
 
   // Poll for auth status using proper query hook
   const { data: statusData, isError: isStatusError } = useAuthStatus({
@@ -165,25 +185,34 @@ const OAuthDialogImpl = NiceModal.create<NoProps>(() => {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-3 py-4">
-              <Button
-                variant="outline"
-                className="w-full h-12 flex items-center justify-center gap-3"
-                onClick={() => handleProviderSelect('github')}
-              >
-                <Github className="h-5 w-5" />
-                <span>{t('oauth.continueWithGitHub')}</span>
-              </Button>
+<div className="space-y-3 py-4">
+  <Button
+    variant="outline"
+    className="w-full h-12 flex items-center justify-center gap-3"
+    onClick={() => handleProviderSelect('github')}
+  >
+    <Github className="h-5 w-5" />
+    <span>{t('oauth.continueWithGitHub')}</span>
+  </Button>
 
-              <Button
-                variant="outline"
-                className="w-full h-12 flex items-center justify-center gap-3"
-                onClick={() => handleProviderSelect('google')}
-              >
-                <Chrome className="h-5 w-5" />
-                <span>{t('oauth.continueWithGoogle')}</span>
-              </Button>
-            </div>
+  <Button
+    variant="outline"
+    className="w-full h-12 flex items-center justify-center gap-3"
+    onClick={() => handleProviderSelect('google')}
+  >
+    <Chrome className="h-5 w-5" />
+    <span>{t('oauth.continueWithGoogle')}</span>
+  </Button>
+  
+  <Button
+    variant="outline"
+    className="w-full h-12 flex items-center justify-center gap-3"
+    onClick={() => setShowLocalLogin(true)}
+  >
+    <User className="h-5 w-5" />
+    <span>Continue with Username/Password</span>
+  </Button>
+</div>
 
             <DialogFooter>
               <Button variant="ghost" onClick={handleClose}>
@@ -289,18 +318,30 @@ const OAuthDialogImpl = NiceModal.create<NoProps>(() => {
   };
 
   return (
-    <Dialog
-      open={modal.visible}
-      onOpenChange={(open) => {
-        if (!open) {
-          handleClose();
-        }
-      }}
-    >
-      <DialogContent className="sm:max-w-[500px]">
-        {renderContent()}
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog
+        open={modal.visible && !showLocalLogin}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleClose();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          {renderContent()}
+        </DialogContent>
+      </Dialog>
+      
+      <LocalLoginDialog
+        isOpen={showLocalLogin}
+        onOpenChange={setShowLocalLogin}
+        onLoginSuccess={() => {
+          reloadSystem();
+          modal.resolve(null);
+          modal.remove();
+        }}
+      />
+    </>
   );
 });
 

@@ -7,6 +7,5 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #1612 | 3:30 PM | 🔵 | Examined error handling in vibe-kanban server crate | ~215 |
-| #1611 | " | 🔵 | Found RemoteClientNotConfigured error in server error handling | ~195 |
+| #1609 | 3:30 PM | 🔵 | vibe-kanban backend includes OAuth client for authorization-code handoffs | ~309 |
 </claude-mem-context>

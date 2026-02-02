@@ -52,6 +52,10 @@ sha2 = "0.10"
 fst = "0.4"
 secrecy = "0.10.3"
 moka = { version = "0.12", features = ["future"] }
+bcrypt = "0.15"
+jsonwebtoken = "9"
+argon2 = "0.5"
+rand = { version = "0.8", features = ["std"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "2"
