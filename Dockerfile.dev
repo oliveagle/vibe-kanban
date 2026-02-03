@@ -3,8 +3,7 @@
 # ============================================
 #
 # Layer 1: Base - Rust + system dependencies (tag: dev-base-v1.0.0)
-# Layer 2: Dev tools - cargo-watch, etc. (tag: dev-tools-v1.0.0)
-# Layer 3: Runtime - mount local code (tag: dev-runtime-v1.0.0)
+# Layer 2: Runtime - mount local code (tag: dev-runtime-v1.0.0)
 #
 # Usage:
 #   # Build all layers (first time only)
@@ -12,14 +11,13 @@
 #
 #   # Or build specific layer
 #   podman build -f Dockerfile.dev --target base --build-arg USE_MIRROR=true -t vibe-kanban:dev-base-v1.0.0 .
-#   podman build -f Dockerfile.dev --target dev-tools --build-arg USE_MIRROR=true -t vibe-kanban:dev-tools-v1.0.0 .
 #   podman build -f Dockerfile.dev --target dev-runtime --build-arg USE_MIRROR=true -t vibe-kanban:dev-runtime-v1.0.0 .
 #
 #   # Run with pre-built image
 #   just dev-srv
 #
 # Version History:
-#   v1.0.0 - Initial version with Rust 1.80, cargo-watch, Lightpanda, Node.js 20
+#   v1.0.0 - Initial version with Rust 1.80, minimal dependencies
 
 # ============================================
 # Layer 1: Base Image
@@ -50,33 +48,9 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # ============================================
-# Layer 2: Development Tools
+# Layer 2: Development Runtime
 # ============================================
-FROM base AS dev-tools
-
-# Install cargo-watch (cached layer, only rebuild when needed)
-RUN cargo install cargo-watch
-
-# Install Lightpanda
-RUN curl -L -o /usr/local/bin/lightpanda \
-    https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux \
-    && chmod a+x /usr/local/bin/lightpanda
-
-# Install Node.js for frontend tooling
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Playwright
-RUN mkdir -p /opt/playwright && cd /opt/playwright \
-    && npm init -y && npm install playwright
-
-ENV PATH="/opt/playwright/node_modules/.bin:${PATH}"
-
-# ============================================
-# Layer 3: Development Runtime
-# ============================================
-FROM dev-tools AS dev-runtime
+FROM base AS dev-runtime
 
 ENV HOST=0.0.0.0
 ENV PORT=3001
@@ -90,5 +64,6 @@ VOLUME ["/app"]
 
 WORKDIR /app
 
+# Note: Install cargo-watch at runtime: cargo install cargo-watch
 # Default: watch and rebuild on code changes
-CMD ["cargo", "watch", "-w", "crates", "-x", "run --bin server"]
+CMD ["sh", "-c", "cargo install cargo-watch && cargo watch -w crates -x 'run --bin server'"]
