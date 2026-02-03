@@ -187,8 +187,8 @@ pub async fn remove_container(
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/orchestration/containers", get(list_containers))
-        .route("/orchestration/containers/:id/start", post(start_container))
-        .route("/orchestration/containers/:id/stop", post(stop_container))
-        .route("/orchestration/containers/:id/restart", post(restart_container))
-        .route("/orchestration/containers/:id", post(remove_container))
+        .route("/orchestration/containers/{id}/start", post(start_container))
+        .route("/orchestration/containers/{id}/stop", post(stop_container))
+        .route("/orchestration/containers/{id}/restart", post(restart_container))
+        .route("/orchestration/containers/{id}", post(remove_container))
 }
