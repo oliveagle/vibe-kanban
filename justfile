@@ -130,15 +130,26 @@ dev-ui:
     export FRONTEND_PORT=3000
     npm run frontend:dev
 
-# 停止所有开发服务
-stop-dev:
+# 停止后端开发容器
+dev-stop-srv:
     #!/usr/bin/env bash
-    echo "Stopping vibe-kanban services..."
-    pkill -f "cargo watch" 2>/dev/null || true
-    pkill -f "server" 2>/dev/null || true
-    pkill -f "vite" 2>/dev/null || true
-    pkill -f "node.*frontend" 2>/dev/null || true
-    echo "Services stopped"
+    echo "Stopping backend dev container..."
+    podman stop vibe-kanban-backend-dev 2>/dev/null || true
+    podman rm vibe-kanban-backend-dev 2>/dev/null || true
+    echo "✅ Backend dev container stopped"
+
+# 停止前端开发容器
+dev-stop-ui:
+    #!/usr/bin/env bash
+    echo "Stopping frontend dev container..."
+    podman stop vibe-kanban-frontend-dev 2>/dev/null || true
+    podman rm vibe-kanban-frontend-dev 2>/dev/null || true
+    echo "✅ Frontend dev container stopped"
+
+# 停止所有开发容器
+dev-stop-all:
+    just dev-stop-srv
+    just dev-stop-ui
 
 # ===========================================
 # BUILD & CHECK
