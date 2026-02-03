@@ -50,16 +50,16 @@ pub async fn list_containers(
         ])
         .output()
         .await
-        .map_err(|e| ApiError::Internal(format!("Failed to execute podman: {}", e)))?;
+        .map_err(|e| ApiError::Io(e))?;
 
     if !output.status.success() {
-        return Err(ApiError::Internal(
+        return Err(ApiError::BadRequest(
             String::from_utf8_lossy(&output.stderr).to_string()
         ));
     }
 
     let containers: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout)
-        .map_err(|e| ApiError::Internal(format!("Failed to parse podman output: {}", e)))?;
+        .map_err(|e| ApiError::BadRequest(format!("Failed to parse podman output: {}", e)))?;
 
     let container_infos: Vec<ContainerInfo> = containers
         .into_iter()
@@ -108,10 +108,10 @@ pub async fn start_container(
         .args(["start", &container_id])
         .output()
         .await
-        .map_err(|e| ApiError::Internal(format!("Failed to start container: {}", e)))?;
+        .map_err(|e| ApiError::BadRequest(format!("Failed to start container: {}", e)))?;
 
     if !output.status.success() {
-        return Err(ApiError::Internal(
+        return Err(ApiError::BadRequest(
             String::from_utf8_lossy(&output.stderr).to_string()
         ));
     }
@@ -129,10 +129,10 @@ pub async fn stop_container(
         .args(["stop", &container_id])
         .output()
         .await
-        .map_err(|e| ApiError::Internal(format!("Failed to stop container: {}", e)))?;
+        .map_err(|e| ApiError::BadRequest(format!("Failed to stop container: {}", e)))?;
 
     if !output.status.success() {
-        return Err(ApiError::Internal(
+        return Err(ApiError::BadRequest(
             String::from_utf8_lossy(&output.stderr).to_string()
         ));
     }
@@ -150,10 +150,10 @@ pub async fn restart_container(
         .args(["restart", &container_id])
         .output()
         .await
-        .map_err(|e| ApiError::Internal(format!("Failed to restart container: {}", e)))?;
+        .map_err(|e| ApiError::BadRequest(format!("Failed to restart container: {}", e)))?;
 
     if !output.status.success() {
-        return Err(ApiError::Internal(
+        return Err(ApiError::BadRequest(
             String::from_utf8_lossy(&output.stderr).to_string()
         ));
     }
@@ -171,10 +171,10 @@ pub async fn remove_container(
         .args(["rm", &container_id])
         .output()
         .await
-        .map_err(|e| ApiError::Internal(format!("Failed to remove container: {}", e)))?;
+        .map_err(|e| ApiError::BadRequest(format!("Failed to remove container: {}", e)))?;
 
     if !output.status.success() {
-        return Err(ApiError::Internal(
+        return Err(ApiError::BadRequest(
             String::from_utf8_lossy(&output.stderr).to_string()
         ));
     }
