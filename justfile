@@ -13,12 +13,21 @@ default:
 # 启动前端开发服务器 (port 3000)
 dev-ui:
     #!/usr/bin/env bash
+    if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+        echo "Error: Port 3000 is already in use"
+        exit 1
+    fi
     export FRONTEND_PORT=3000
     npm run frontend:dev
 
-# 启动后端开发服务器
+# 启动后端开发服务器 (port 3001)
 dev-srv host="0.0.0.0":
-    HOST={{host}} npm run backend:dev
+    #!/usr/bin/env bash
+    if lsof -Pi :3001 -sTCP:LISTEN -t >/dev/null 2>&1; then
+        echo "Error: Port 3001 is already in use"
+        exit 1
+    fi
+    HOST={{host}} BACKEND_PORT=3001 npm run backend:dev:watch
 
 # 停止所有开发服务
 stop-dev:
