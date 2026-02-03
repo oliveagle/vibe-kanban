@@ -1,6 +1,13 @@
 # Backend Dockerfile - Rust server only
 FROM rust:1.93-slim-bookworm AS builder
 
+# Use Tsinghua mirror for local development (CI will use default)
+ARG USE_MIRROR=false
+RUN if [ "$USE_MIRROR" = "true" ]; then \
+        sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources && \
+        sed -i 's/security.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources; \
+    fi
+
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
     pkg-config \
@@ -24,6 +31,13 @@ RUN cargo build --release --bin server
 
 # Runtime stage
 FROM debian:bookworm-slim
+
+# Use Tsinghua mirror for local development (CI will use default)
+ARG USE_MIRROR=false
+RUN if [ "$USE_MIRROR" = "true" ]; then \
+        sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources && \
+        sed -i 's/security.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources; \
+    fi
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \

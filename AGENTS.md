@@ -222,18 +222,24 @@ When running containers that need internet access (e.g., for downloading depende
 
 **Proxy URL:** `http://host.containers.internal:1080`
 
-**Example - Running backend dev container with proxy:**
+**Example - Running backend dev container with proxy and Tsinghua mirror:**
 ```bash
 podman run -d \
   --name vibe-kanban-backend-dev \
+  --user root \
   -p 3001:3001 \
   -e https_proxy=http://host.containers.internal:1080 \
   -e http_proxy=http://host.containers.internal:1080 \
   -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban:/app:rw \
   -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
   --workdir /app \
-  rust:1.75-slim-bookworm \
-  sh -c "cargo install cargo-watch && cargo watch -w crates -x 'run --bin server'"
+  localhost/vibe-kanban:local-backend \
+  sh -c "sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
+         sed -i 's/security.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
+         apt-get update && \
+         apt-get install -y cargo pkg-config libssl-dev libsqlite3-dev libclang-dev clang && \
+         cargo install cargo-watch && \
+         cargo watch -w crates -x 'run --bin server'"
 ```
 
 **Example - Installing packages with proxy:**
