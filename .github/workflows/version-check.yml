@@ -1,0 +1,20 @@
+name: Version Check
+
+on:
+  pull_request:
+    branches: [main, master]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version
+        run: |
+          chmod +x .github/scripts/check-version.sh
+          .github/scripts/check-version.sh

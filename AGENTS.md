@@ -69,9 +69,55 @@ podman restart vibe-kanban-backend
 - Use `.env` for local overrides; never commit secrets. Key envs: `FRONTEND_PORT`, `BACKEND_PORT`, `HOST` 
 - Dev ports and assets are managed by `scripts/setup-dev-environment.js`.
 
-## Version Management
+## Git Workflow & Branch Strategy
 
-### Version Number Synchronization
+We follow **Git Flow** with three main branches:
+
+### Branches
+
+- **`feature/*`** - Feature development branches
+  - Created from: `dev`
+  - Merged to: `dev`
+  - Naming: `feature/container-orchestration`, `feature/ui-improvements`
+
+- **`dev`** - Development/Integration branch
+  - Created from: `master`
+  - Merged to: `master`
+  - Auto-builds images with `:dev` tag
+  - Used for testing and integration
+
+- **`master`**/`**main**` - Production/Release branch
+  - Protected branch
+  - Requires version bump for PRs
+  - Auto-builds images with `:latest` and version tags
+  - Represents stable releases
+
+### Workflow
+
+```
+feature/my-feature → dev → master/main
+```
+
+1. **Create feature branch** from `dev`:
+   ```bash
+   git checkout dev
+   git pull origin dev
+   git checkout -b feature/my-feature
+   ```
+
+2. **Develop and test** locally
+
+3. **Create PR** to `dev` branch
+   - No version bump required
+   - Standard PR template
+
+4. **After testing in dev**, create PR to `master`:
+   - **Must bump version** in all package.json files
+   - Follows semantic versioning (e.g., `0.0.145` → `0.0.146`)
+   - Version check CI will validate
+
+### Version Management
+
 All package.json files must maintain the same version number:
 - `package.json` (root) - Source of truth
 - `npx-cli/package.json` - Must match root
@@ -84,9 +130,16 @@ All package.json files must maintain the same version number:
 4. Commit all changes together
 
 ### Container Image Versioning
-Container images are tagged with version numbers from `package.json`:
+
+**Production (master/main):**
+- `ghcr.io/oliveagle/vibe-kanban/backend:latest`
 - `ghcr.io/oliveagle/vibe-kanban/backend:0.0.145`
+- `ghcr.io/oliveagle/vibe-kanban/frontend:latest`
 - `ghcr.io/oliveagle/vibe-kanban/frontend:0.0.145`
+
+**Development (dev branch):**
+- `ghcr.io/oliveagle/vibe-kanban/backend:dev`
+- `ghcr.io/oliveagle/vibe-kanban/frontend:dev`
 
 **For rollbacks:**
 ```bash
