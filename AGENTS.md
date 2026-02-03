@@ -213,3 +213,35 @@ const { chromium } = require('playwright');
 - Lightpanda is still in development, some features like screenshots are not yet supported
 - WebSocket is not fully supported in Lightpanda
 - For full Playwright features, consider using the standard Playwright with Chromium
+
+## Container Network Proxy Setup
+
+When running containers that need internet access (e.g., for downloading dependencies), you can use the host's proxy (trojan-go) via `host.containers.internal`.
+
+### Using Proxy in Containers
+
+**Proxy URL:** `http://host.containers.internal:1080`
+
+**Example - Running backend dev container with proxy:**
+```bash
+podman run -d \
+  --name vibe-kanban-backend-dev \
+  -p 3001:3001 \
+  -e https_proxy=http://host.containers.internal:1080 \
+  -e http_proxy=http://host.containers.internal:1080 \
+  -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban:/app:rw \
+  -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
+  --workdir /app \
+  rust:1.75-slim-bookworm \
+  sh -c "cargo install cargo-watch && cargo watch -w crates -x 'run --bin server'"
+```
+
+**Example - Installing packages with proxy:**
+```bash
+podman exec vibe-kanban-backend sh -c "
+  export https_proxy=http://host.containers.internal:1080
+  apt-get update && apt-get install -y some-package
+"
+```
+
+**Note:** This assumes you have a proxy service (like trojan-go) running on the host at port 1080.
