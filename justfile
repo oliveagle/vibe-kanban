@@ -21,7 +21,7 @@ dev-srv host="0.0.0.0":
     HOST={{host}} npm run backend:dev
 
 # 停止所有开发服务
-stop:
+stop-dev:
     #!/usr/bin/env bash
     echo "Stopping vibe-kanban services..."
     pkill -f "cargo watch" 2>/dev/null || true
