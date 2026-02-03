@@ -10,6 +10,72 @@ default:
 # DEVELOPMENT WORKFLOW
 # ===========================================
 
+# 构建所有开发环境镜像层 (只需执行一次)
+dev-build-all:
+    #!/usr/bin/env bash
+    echo "Building development environment images..."
+    echo ""
+    
+    # Layer 1: Base (Rust + system deps)
+    echo "📦 Building Layer 1: Base (Rust 1.80 + system dependencies)..."
+    podman build -f Dockerfile.dev --target base --build-arg USE_MIRROR=true -t vibe-kanban:dev-base-v1.0.0 .
+    echo "✅ Layer 1 built: vibe-kanban:dev-base-v1.0.0"
+    echo ""
+    
+    # Layer 2: Dev tools
+    echo "📦 Building Layer 2: Dev tools (cargo-watch, Lightpanda, Node.js)..."
+    podman build -f Dockerfile.dev --target dev-tools --build-arg USE_MIRROR=true -t vibe-kanban:dev-tools-v1.0.0 .
+    echo "✅ Layer 2 built: vibe-kanban:dev-tools-v1.0.0"
+    echo ""
+    
+    # Layer 3: Runtime
+    echo "📦 Building Layer 3: Runtime..."
+    podman build -f Dockerfile.dev --target dev-runtime --build-arg USE_MIRROR=true -t vibe-kanban:dev-runtime-v1.0.0 .
+    echo "✅ Layer 3 built: vibe-kanban:dev-runtime-v1.0.0"
+    echo ""
+    
+    echo "🎉 All development images built successfully!"
+    echo ""
+    echo "Available images:"
+    echo "  - vibe-kanban:dev-base-v1.0.0    (Rust 1.80 + system deps)"
+    echo "  - vibe-kanban:dev-tools-v1.0.0   (+ cargo-watch, Lightpanda, Node.js)"
+    echo "  - vibe-kanban:dev-runtime-v1.0.0 (Full dev environment)"
+
+# 启动后端开发容器 (port 3001)
+dev-srv:
+    #!/usr/bin/env bash
+    if lsof -Pi :3001 -sTCP:LISTEN -t >/dev/null 2>&1; then
+        echo "Error: Port 3001 is already in use"
+        exit 1
+    fi
+    
+    # Check if dev image exists (use versioned tag)
+    if ! podman images | grep -q "vibe-kanban.*dev-runtime-v1.0.0"; then
+        echo "Dev image not found, building all layers..."
+        just dev-build-all
+    fi
+    
+    echo "Starting backend development container..."
+    podman run -d \
+        --name vibe-kanban-backend-dev \
+        --replace \
+        -p 3001:3001 \
+        -e HOST=0.0.0.0 \
+        -e PORT=3001 \
+        -e VK_SHARED_API_BASE=http://localhost:3001 \
+        -e RUST_LOG=debug \
+        -e DISABLE_WORKTREE_ORPHAN_CLEANUP=1 \
+        -e https_proxy=http://host.containers.internal:1080 \
+        -e http_proxy=http://host.containers.internal:1080 \
+        -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban:/app:rw \
+        -v ${HOME}/repos:/repos:ro \
+        -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
+        --workdir /app \
+        vibe-kanban:dev-runtime-v1.0.0
+    
+    echo "✅ Backend dev container started on http://localhost:3001"
+    echo "View logs: podman logs -f vibe-kanban-backend-dev"
+
 # 启动前端开发服务器 (port 3000)
 dev-ui:
     #!/usr/bin/env bash
@@ -19,15 +85,6 @@ dev-ui:
     fi
     export FRONTEND_PORT=3000
     npm run frontend:dev
-
-# 启动后端开发服务器 (port 3001)
-dev-srv host="0.0.0.0":
-    #!/usr/bin/env bash
-    if lsof -Pi :3001 -sTCP:LISTEN -t >/dev/null 2>&1; then
-        echo "Error: Port 3001 is already in use"
-        exit 1
-    fi
-    HOST={{host}} BACKEND_PORT=3001 npm run backend:dev:watch
 
 # 停止所有开发服务
 stop-dev:

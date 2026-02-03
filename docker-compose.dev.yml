@@ -1,0 +1,67 @@
+services:
+  backend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    image: vibe-kanban:dev-backend
+    container_name: vibe-kanban-backend-dev
+    user: "0:0"
+    ports:
+      - "0.0.0.0:3001:3001"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3001
+      - VK_SHARED_API_BASE=http://localhost:3001
+      - RUST_LOG=debug
+      - DISABLE_WORKTREE_ORPHAN_CLEANUP=1
+    volumes:
+      - .:/app:rw
+      - ${HOME}/repos:/repos:ro
+      - ${HOME}/data:/app/data:rw
+      - ${HOME}/workspace:/workspace:ro
+      - ${HOME}/.claude:/root/.claude:ro
+      - backend-data-dev:/root/.local/share/vibe-kanban
+      - backend-cache-dev:/root/.cache/vibe-kanban
+      - ${HOME}/.config/opencode/opencode.json:/root/.config/opencode/opencode.json:ro
+      - opencode-transcripts-dev:/root/.config/opencode/transcripts
+      - opencode-todos-dev:/root/.config/opencode/todos
+      - opencode-skills-dev:/root/.config/opencode/skills
+      - opencode-commands-dev:/root/.config/opencode/commands
+      - opencode-cache-dev:/root/.cache/opencode
+      - backend-persistent-dev:/root/.persistent
+      - /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro
+    working_dir: /app
+    command: ["cargo", "watch", "-w", "crates", "-x", "run --bin server"]
+    restart: unless-stopped
+    networks:
+      - vibe-kanban-dev-net
+
+  frontend-dev:
+    image: node:20-alpine
+    container_name: vibe-kanban-frontend-dev
+    ports:
+      - "0.0.0.0:3000:3000"
+    volumes:
+      - ./frontend:/app:rw
+      - /app/node_modules
+    working_dir: /app
+    command: ["sh", "-c", "npm install && npm run dev -- --port 3000 --host 0.0.0.0"]
+    environment:
+      - VITE_API_BASE_URL=http://localhost:3001
+    restart: unless-stopped
+    networks:
+      - vibe-kanban-dev-net
+
+volumes:
+  backend-data-dev:
+  backend-cache-dev:
+  backend-persistent-dev:
+  opencode-cache-dev:
+  opencode-transcripts-dev:
+  opencode-todos-dev:
+  opencode-skills-dev:
+  opencode-commands-dev:
+
+networks:
+  vibe-kanban-dev-net:
+    driver: bridge
