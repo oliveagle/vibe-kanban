@@ -11,14 +11,17 @@ default:
 # ===========================================
 
 # 同时启动前端和后端（监听所有网络接口）
-dev host="0.0.0.0" frontend_port="":
+# 如果服务已在运行，会先停止再启动
+dev host="0.0.0.0":
     #!/usr/bin/env bash
-    export HOST={{host}}
-    if [ -n "{{frontend_port}}" ]; then
-        export FRONTEND_PORT={{frontend_port}}
-    else
-        export FRONTEND_PORT=$(node scripts/setup-dev-environment.js frontend)
+    # Check if services are already running
+    if pgrep -f "vite" > /dev/null || pgrep -f "cargo watch" > /dev/null; then
+        echo "Services already running, restarting..."
+        just stop
+        sleep 2
     fi
+    export HOST={{host}}
+    export FRONTEND_PORT=3000
     export BACKEND_PORT=$(node scripts/setup-dev-environment.js backend)
     echo "Starting vibe-kanban..."
     echo "  Frontend: http://{{host}}:${FRONTEND_PORT}"
@@ -31,16 +34,12 @@ dev host="0.0.0.0" frontend_port="":
 # 启动前端开发服务器
 frontend-dev:
     #!/usr/bin/env bash
-    export FRONTEND_PORT=$(node scripts/setup-dev-environment.js frontend)
+    export FRONTEND_PORT=3000
     npm run frontend:dev
 
 # 启动后端开发服务器（监听所有网络接口）
 backend-dev host="0.0.0.0":
     HOST={{host}} npm run backend:dev
-
-# 重启开发服务（先停止再启动）
-restart-dev host="0.0.0.0" frontend_port="":
-    just stop && sleep 2 && just dev {{host}} {{frontend_port}}
 
 # ===========================================
 # SERVICE MANAGEMENT
