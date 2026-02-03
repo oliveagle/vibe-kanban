@@ -39,12 +39,18 @@ jobs:
         id: tags
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "TAGS=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${{ github.sha }}\n${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${{ steps.version.outputs.VERSION }}\n${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:latest" >> $GITHUB_OUTPUT
+            TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${{ github.sha }}"
+            TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${{ steps.version.outputs.VERSION }}"
+            TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:latest"
           elif [[ "${{ github.ref }}" == refs/heads/dev ]]; then
-            echo "TAGS=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${{ github.sha }}\n${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:dev" >> $GITHUB_OUTPUT
+            TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${{ github.sha }}"
+            TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:dev"
           else
-            echo "TAGS=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${{ github.sha }}\n${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${{ steps.version.outputs.VERSION }}\n${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:latest" >> $GITHUB_OUTPUT
+            TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${{ github.sha }}"
+            TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:${{ steps.version.outputs.VERSION }}"
+            TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/backend:latest"
           fi
+          echo "TAGS=$TAGS" >> $GITHUB_OUTPUT
 
       - name: Build and Push Backend Image
         uses: docker/build-push-action@v5
@@ -83,12 +89,18 @@ jobs:
         id: tags
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "TAGS=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}\n${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ steps.version.outputs.VERSION }}\n${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:latest" >> $GITHUB_OUTPUT
+            TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}"
+            TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ steps.version.outputs.VERSION }}"
+            TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:latest"
           elif [[ "${{ github.ref }}" == refs/heads/dev ]]; then
-            echo "TAGS=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}\n${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:dev" >> $GITHUB_OUTPUT
+            TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}"
+            TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:dev"
           else
-            echo "TAGS=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}\n${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ steps.version.outputs.VERSION }}\n${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:latest" >> $GITHUB_OUTPUT
+            TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ github.sha }}"
+            TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ steps.version.outputs.VERSION }}"
+            TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:latest"
           fi
+          echo "TAGS=$TAGS" >> $GITHUB_OUTPUT
 
       - name: Build and Push Frontend Image
         uses: docker/build-push-action@v5
