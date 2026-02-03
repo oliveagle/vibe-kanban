@@ -26,6 +26,7 @@ services:
       - opencode-commands:/root/.config/opencode/commands
       - opencode-cache:/root/.cache/opencode
       - backend-persistent:/root/.persistent
+      - /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro
     restart: unless-stopped
     networks:
       - vibe-kanban-net
