@@ -3,11 +3,9 @@
   "model": "kimi-for-coding",
   "mcp": {
     "vibe_kanban": {
-      "type": "local",
-      "command": [
-        "/usr/local/bin/mcp_task_server"
-      ],
-      "environment": {
+      "command": "/usr/local/bin/mcp_task_server",
+      "args": [],
+      "env": {
         "VIBE_BACKEND_URL": "http://localhost:3000"
       }
     }

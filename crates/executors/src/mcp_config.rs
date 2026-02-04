@@ -242,6 +242,12 @@ fn adapt_opencode(servers: ServerMap, meta: Option<Value>) -> Value {
             new_map.insert("type".to_string(), Value::String("local".to_string()));
             new_map.insert("command".to_string(), Value::Array(cmd_vec));
             new_map.insert("enabled".to_string(), Value::Bool(true));
+            
+            // Preserve env field if present
+            if let Some(env) = s.get("env") {
+                new_map.insert("env".to_string(), env.clone());
+            }
+            
             *s = new_map;
         }
     }
