@@ -1,7 +1,11 @@
 import { oauthApi, ApiError } from './api';
 import { UserData, AssigneesQuery } from 'shared/types';
 
-export const REMOTE_API_URL = import.meta.env.VITE_VK_SHARED_API_BASE || '';
+const BACKEND_URL = typeof window !== 'undefined'
+  ? `${window.location.protocol}//${window.location.host.replace(/:\d+$/, '')}:3001`
+  : 'http://localhost:3001';
+
+export const REMOTE_API_URL = BACKEND_URL;
 
 const makeRequest = async (path: string, options: RequestInit = {}) => {
   const tokenRes = await oauthApi.getToken();

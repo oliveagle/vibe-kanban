@@ -43,7 +43,18 @@ RUN apt-get update && apt-get install -y \
     clang \
     git \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 20.x and npm/npx
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g npm@latest \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust nightly toolchain (matching rust-toolchain.toml)
+# This prevents downloading on every container start
+RUN rustup toolchain install nightly-2025-12-04 --component rustfmt,rustc,rust-analyzer,rust-src,rust-std,cargo
 
 WORKDIR /app
 

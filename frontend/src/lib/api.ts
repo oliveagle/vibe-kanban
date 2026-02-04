@@ -110,6 +110,10 @@ export class ApiError<E = unknown> extends Error {
   }
 }
 
+const API_BASE_URL = typeof window !== 'undefined' 
+  ? `${window.location.protocol}//${window.location.host.replace(/:\d+$/, '')}:3001`
+  : 'http://localhost:3001';
+
 const makeRequest = async (url: string, options: RequestInit = {}) => {
   const headers = new Headers(options.headers ?? {});
   if (!headers.has('Content-Type')) {
@@ -122,7 +126,8 @@ const makeRequest = async (url: string, options: RequestInit = {}) => {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  return fetch(url, {
+  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
+  return fetch(fullUrl, {
     ...options,
     headers,
   });

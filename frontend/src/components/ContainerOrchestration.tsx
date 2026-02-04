@@ -5,14 +5,12 @@ import {
   RotateCw, 
   Trash2, 
   Container,
-  RefreshCw,
-  ExternalLink
+  RefreshCw
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader } from '@/components/ui/loader';
-import { useToast } from '@/hooks/useToast';
 
 interface PortMapping {
   host_port: string;
@@ -33,7 +31,6 @@ export function ContainerOrchestration() {
   const [containers, setContainers] = useState<ContainerInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
-  const { toast } = useToast();
 
   const fetchContainers = async () => {
     try {
@@ -44,11 +41,7 @@ export function ContainerOrchestration() {
         setContainers(data.data);
       }
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch containers',
-        variant: 'destructive',
-      });
+      console.error('Failed to fetch containers:', error);
     } finally {
       setIsLoading(false);
     }
@@ -69,20 +62,13 @@ export function ContainerOrchestration() {
       const data = await response.json();
       
       if (data.success) {
-        toast({
-          title: 'Success',
-          description: `Container ${action}ed successfully`,
-        });
+        console.log(`Container ${action}ed successfully`);
         fetchContainers();
       } else {
         throw new Error(data.message || 'Action failed');
       }
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: `Failed to ${action} container`,
-        variant: 'destructive',
-      });
+      console.error(`Failed to ${action} container:`, error);
     } finally {
       setActionInProgress(null);
     }

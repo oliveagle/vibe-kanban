@@ -2,6 +2,10 @@ import { useEffect, useState, useRef } from 'react';
 import { applyPatch } from 'rfc6902';
 import type { Operation } from 'rfc6902';
 
+const BACKEND_URL = typeof window !== 'undefined'
+  ? `${window.location.protocol}//${window.location.host.replace(/:\d+$/, '')}:3001`
+  : 'http://localhost:3001';
+
 type WsJsonPatchMsg = { JsonPatch: Operation[] };
 type WsFinishedMsg = { finished: boolean };
 type WsMsg = WsJsonPatchMsg | WsFinishedMsg;
@@ -91,12 +95,11 @@ export const useJsonPatchWsStream = <T extends object>(
       // Reset finished flag for new connection
       finishedRef.current = false;
 
-      // Build WebSocket endpoint
       let wsEndpoint: string;
       if (endpoint.startsWith('/')) {
-        // Relative path - build absolute URL
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        wsEndpoint = `${protocol}//${window.location.host}${endpoint}`;
+        const host = BACKEND_URL.replace(/^https?:\/\//, '');
+        wsEndpoint = `${protocol}//${host}${endpoint}`;
       } else if (endpoint.startsWith('http')) {
         // HTTP(S) URL - convert to WS(S)
         wsEndpoint = endpoint.replace(/^http/, 'ws');

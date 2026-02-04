@@ -4824,6 +4824,7 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "tokio-util",
+ "tower-http 0.6.8",
  "tracing",
  "tracing-subscriber",
  "ts-rs 11.0.1",

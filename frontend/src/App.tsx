@@ -1,24 +1,22 @@
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { I18nextProvider } from 'react-i18next';
 import i18n from '@/i18n';
-import { Projects } from '@/pages/Projects';
-import { ProjectTasks } from '@/pages/ProjectTasks';
-import { FullAttemptLogsPage } from '@/pages/FullAttemptLogs';
-import { LandingPage } from '@/pages/LandingPage';
+const Projects = lazy(() => import('@/pages/Projects').then(m => ({ default: m.Projects })));
+const ProjectTasks = lazy(() => import('@/pages/ProjectTasks').then(m => ({ default: m.ProjectTasks })));
+const FullAttemptLogsPage = lazy(() => import('@/pages/FullAttemptLogs').then(m => ({ default: m.FullAttemptLogsPage })));
+const LandingPage = lazy(() => import('@/pages/LandingPage').then(m => ({ default: m.LandingPage })));
 import { NormalLayout } from '@/components/layout/NormalLayout';
 import { usePostHog } from 'posthog-js/react';
 import { useAuth } from '@/hooks';
 import { usePreviousPath } from '@/hooks/usePreviousPath';
 
-import {
-  AgentSettings,
-  GeneralSettings,
-  McpSettings,
-  OrganizationSettings,
-  ProjectSettings,
-  SettingsLayout,
-} from '@/pages/settings/';
+const SettingsLayout = lazy(() => import('@/pages/settings/').then(m => ({ default: m.SettingsLayout })));
+const GeneralSettings = lazy(() => import('@/pages/settings/').then(m => ({ default: m.GeneralSettings })));
+const ProjectSettings = lazy(() => import('@/pages/settings/').then(m => ({ default: m.ProjectSettings })));
+const OrganizationSettings = lazy(() => import('@/pages/settings/').then(m => ({ default: m.OrganizationSettings })));
+const AgentSettings = lazy(() => import('@/pages/settings/').then(m => ({ default: m.AgentSettings })));
+const McpSettings = lazy(() => import('@/pages/settings/').then(m => ({ default: m.McpSettings })));
 import { UserSystemProvider, useUserSystem } from '@/components/ConfigProvider';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { SearchProvider } from '@/contexts/SearchContext';
@@ -121,7 +119,13 @@ function AppContent() {
     return (
       <I18nextProvider i18n={i18n}>
         <ThemeProvider initialTheme={config?.theme || ThemeMode.SYSTEM}>
-          <LandingPage />
+          <Suspense fallback={
+            <div className="h-screen flex items-center justify-center">
+              <Loader message="Loading..." size={32} />
+            </div>
+          }>
+            <LandingPage />
+          </Suspense>
         </ThemeProvider>
       </I18nextProvider>
     );
@@ -132,6 +136,11 @@ function AppContent() {
       <ThemeProvider initialTheme={config?.theme || ThemeMode.SYSTEM}>
         <SearchProvider>
           <div className="h-screen flex flex-col bg-background overflow-hidden">
+            <Suspense fallback={
+              <div className="h-full flex items-center justify-center">
+                <Loader message="Loading..." size={32} />
+              </div>
+            }>
             <SentryRoutes>
               {/* VS Code full-page logs route (outside NormalLayout for minimal UI) */}
               <Route
@@ -172,6 +181,7 @@ function AppContent() {
                 />
               </Route>
             </SentryRoutes>
+            </Suspense>
           </div>
         </SearchProvider>
       </ThemeProvider>

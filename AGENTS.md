@@ -29,6 +29,36 @@ Do not manually edit shared/types.ts, instead edit crates/server/src/bin/generat
 - Prepare SQLx (remote package, postgres): `pnpm run remote:prepare-db`
 - Local NPX build: `pnpm run build:npx` then `pnpm pack` in `npx-cli/`
 
+## Container-Based Development Commands (Just)
+
+**Build dev images:**
+```bash
+just dev-build-all
+```
+
+**Start backend in container:**
+```bash
+just dev-srv          # Interactive mode
+just dev-srv -d       # Background mode
+just dev-srv --no-build  # Skip cargo-watch, direct run
+```
+
+**Start frontend in container:**
+```bash
+just dev-ui           # Development mode
+just dev-ui --build   # Production build mode (recommended for external access)
+```
+
+**Stop containers:**
+```bash
+just dev-srv-stop
+just dev-ui-stop
+```
+
+**Dev container options:**
+- Backend: `--network vibe-kanban-dev` for shared network
+- Frontend: `--build` flag for production mode with pre-built bundle
+
 ## Coding Style & Naming Conventions
 - Rust: `rustfmt` enforced (`rustfmt.toml`); group imports by crate; snake_case modules, PascalCase types.
 - TypeScript/React: ESLint + Prettier (2 spaces, single quotes, 80 cols). PascalCase components, camelCase vars/functions, kebab-case file names where practical.
@@ -214,9 +244,102 @@ const { chromium } = require('playwright');
 - WebSocket is not fully supported in Lightpanda
 - For full Playwright features, consider using the standard Playwright with Chromium
 
+## Container-Based Development Environment
+
+### Architecture
+
+For container-based development, both frontend (`dev-ui`) and backend (`dev-srv`) run in separate containers on a shared Podman network:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Host Machine                             │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              vibe-kanban-dev Network                    │   │
+│  │  ┌──────────────────┐      ┌──────────────────────┐  │   │
+│  │  │ Frontend Container│──────│  Backend Container    │  │   │
+│  │  │   (dev-ui)        │      │    (dev-srv)          │  │   │
+│  │  │   Port: 3000        │      │    Port: 3001        │  │   │
+│  │  │   Image: node:20    │      │    Image: dev-runtime│  │   │
+│  │  └──────────────────┘      └──────────────────────┘  │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Container Network Configuration
+
+Both containers join the shared network `vibe-kanban-dev`:
+
+```bash
+# Create network (if not exists)
+podman network create vibe-kanban-dev
+
+# Frontend connects to backend via container name:
+# BACKEND_HOST=vibe-kanban-backend-dev
+# BACKEND_PORT=3001
+```
+
+### Required Volume Mounts
+
+**Backend Container (`dev-srv`):**
+- `/app` (codebase): Read-write for hot-reload
+- `/repos` (optional): Read-only access to local repos
+- `/var/tmp`: Read-write for workspace/worktree storage
+- `/run/user/1000/podman/podman.sock` (optional): Docker/Podman socket for container orchestration
+
+**Frontend Container (`dev-ui`):**
+- `/app/frontend`: Read-write for hot-reload (dev mode) or read-only (production mode)
+- `/app/shared`: Read-only for shared TypeScript types
+
+### Port Mappings
+
+- **Frontend**: Host port 3000 → Container port 3000
+- **Backend**: Host port 3001 → Container port 3001
+
+Both ports should be accessible from external machines if needed.
+
+### Development Commands
+
+```bash
+# Build development images (first time only)
+just dev-build-all
+
+# Start backend in container (background)
+just dev-srv -d
+
+# Start frontend in container (production build mode)
+just dev-ui --build
+
+# Stop all dev containers
+just dev-srv-stop
+just dev-ui-stop
+```
+
+### Frontend Build Optimization
+
+The frontend supports code splitting via manual chunks:
+
+- `vendor-react`: Core React libraries
+- `vendor-ui`: UI animation and component libraries
+- `vendor-data`: Data management (React Query, Zustand)
+- `vendor-editor`: Code editor components
+- `vendor-form`: Form handling libraries
+
+Routes are lazy-loaded using `React.lazy()` for better initial load performance.
+
+### WebSocket Configuration
+
+WebSocket connections from browser → backend flow:
+
+```
+Browser → Frontend Container (3000) → Backend Container (3001)
+        (HTTP/WS proxy)              (via shared network)
+```
+
+**Important:** The backend WebSocket endpoint must be hardcoded or properly configured to use the backend container's address, not `window.location.host`.
+
 ## Container Network Proxy Setup
 
-When running containers that need internet access (e.g., for downloading dependencies), you can use the host's proxy (trojan-go) via `host.containers.internal`.
+When running containers that need internet access (e.g., for downloading dependencies), you can use the host's proxy via `host.containers.internal`.
 
 ### Using Proxy in Containers
 
@@ -230,10 +353,10 @@ podman run -d \
   -p 3001:3001 \
   -e https_proxy=http://host.containers.internal:1080 \
   -e http_proxy=http://host.containers.internal:1080 \
-  -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban:/app:rw \
+  -v /path/to/vibe-kanban:/app:rw \
   -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
   --workdir /app \
-  localhost/vibe-kanban:local-backend \
+  localhost/vibe-kanban:dev-runtime-v1.0.0 \
   sh -c "sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
          sed -i 's/security.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
          apt-get update && \
