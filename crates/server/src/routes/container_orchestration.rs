@@ -184,11 +184,159 @@ pub async fn remove_container(
     )))
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RunContainerRequest {
+    pub image: String,
+    pub name: Option<String>,
+    pub ports: Option<Vec<PortMapping>>,
+    pub env: Option<Vec<String>>,
+    pub cmd: Option<Vec<String>>,
+    pub detach: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RunContainerResponse {
+    pub container_id: String,
+    pub output: String,
+}
+
+pub async fn run_container(
+    State(_deployment): State<DeploymentImpl>,
+    axum::Json(payload): axum::Json<RunContainerRequest>,
+) -> Result<ResponseJson<ApiResponse<RunContainerResponse>>, ApiError> {
+    let mut args: Vec<String> = vec!["run".to_string()];
+
+    if payload.detach.unwrap_or(true) {
+        args.push("-d".to_string());
+    }
+
+    if let Some(name) = &payload.name {
+        args.push("--name".to_string());
+        args.push(name.clone());
+    }
+
+    if let Some(ports) = &payload.ports {
+        for port in ports {
+            args.push("-p".to_string());
+            args.push(format!("{}:{}", port.host_port, port.container_port));
+        }
+    }
+
+    if let Some(env) = &payload.env {
+        for e in env {
+            args.push("-e".to_string());
+            args.push(e.clone());
+        }
+    }
+
+    args.push(payload.image.clone());
+
+    if let Some(cmd) = &payload.cmd {
+        for c in cmd {
+            args.push(c.clone());
+        }
+    }
+    
+    let output = tokio::process::Command::new("podman")
+        .args(&args)
+        .output()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Failed to run container: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(ApiError::BadRequest(
+            String::from_utf8_lossy(&output.stderr).to_string()
+        ));
+    }
+
+    let container_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    
+    Ok(ResponseJson(ApiResponse::success(RunContainerResponse {
+        container_id,
+        output: String::from_utf8_lossy(&output.stdout).to_string(),
+    })))
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ImageInfo {
+    pub id: String,
+    pub names: Vec<String>,
+    pub size: String,
+    pub created: String,
+}
+
+pub async fn list_images(
+    State(_deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<Vec<ImageInfo>>>, ApiError> {
+    let output = tokio::process::Command::new("podman")
+        .args([
+            "images",
+            "--format",
+            "json",
+        ])
+        .output()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Failed to list images: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(ApiError::BadRequest(
+            String::from_utf8_lossy(&output.stderr).to_string()
+        ));
+    }
+
+    let images: Vec<ImageInfo> = serde_json::from_slice(&output.stdout)
+        .unwrap_or_default();
+
+    Ok(ResponseJson(ApiResponse::success(images)))
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct PullImageRequest {
+    pub image: String,
+}
+
+pub async fn pull_image(
+    State(_deployment): State<DeploymentImpl>,
+    axum::Json(payload): axum::Json<PullImageRequest>,
+) -> Result<ResponseJson<ApiResponse<String>>, ApiError> {
+    // Get proxy settings from environment or use VK default
+    let https_proxy = std::env::var("HTTPS_PROXY")
+        .or_else(|_| std::env::var("https_proxy"))
+        .unwrap_or_else(|_| "http://host.containers.internal:1080".to_string());
+    
+    let http_proxy = std::env::var("HTTP_PROXY")
+        .or_else(|_| std::env::var("http_proxy"))
+        .unwrap_or_else(|_| "http://host.containers.internal:1080".to_string());
+
+    let output = tokio::process::Command::new("podman")
+        .args(["pull", &payload.image])
+        .env("HTTPS_PROXY", &https_proxy)
+        .env("HTTP_PROXY", &http_proxy)
+        .env("https_proxy", &https_proxy)
+        .env("http_proxy", &http_proxy)
+        .output()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("Failed to pull image: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(ApiError::BadRequest(
+            String::from_utf8_lossy(&output.stderr).to_string()
+        ));
+    }
+
+    Ok(ResponseJson(ApiResponse::success(
+        String::from_utf8_lossy(&output.stdout).to_string()
+    )))
+}
+
 pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/orchestration/containers", get(list_containers))
+        .route("/orchestration/containers/run", post(run_container))
         .route("/orchestration/containers/{id}/start", post(start_container))
         .route("/orchestration/containers/{id}/stop", post(stop_container))
         .route("/orchestration/containers/{id}/restart", post(restart_container))
         .route("/orchestration/containers/{id}", post(remove_container))
+        .route("/orchestration/images", get(list_images))
+        .route("/orchestration/images/pull", post(pull_image))
 }

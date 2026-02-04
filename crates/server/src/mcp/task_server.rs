@@ -251,58 +251,6 @@ pub struct GetTaskResponse {
     pub task: TaskDetails,
 }
 
-#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct McpPortMapping {
-    #[schemars(description = "Host port number")]
-    pub host_port: String,
-    #[schemars(description = "Container port number")]
-    pub container_port: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct McpContainerInfo {
-    #[schemars(description = "Container ID")]
-    pub id: String,
-    #[schemars(description = "Container name")]
-    pub name: String,
-    #[schemars(description = "Docker image")]
-    pub image: String,
-    #[schemars(description = "Human-readable status")]
-    pub status: String,
-    #[schemars(description = "Container state (running, exited, etc.)")]
-    pub state: String,
-    #[schemars(description = "Port mappings")]
-    pub ports: Vec<McpPortMapping>,
-    #[schemars(description = "Creation timestamp")]
-    pub created: String,
-}
-
-#[derive(Debug, Serialize, schemars::JsonSchema)]
-pub struct ListContainersResponse {
-    #[schemars(description = "List of all containers")]
-    pub containers: Vec<McpContainerInfo>,
-    #[schemars(description = "Total number of containers")]
-    pub count: usize,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct ContainerActionRequest {
-    #[schemars(description = "The ID of the container to perform action on")]
-    pub container_id: String,
-}
-
-#[derive(Debug, Serialize, schemars::JsonSchema)]
-pub struct ContainerActionResponse {
-    #[schemars(description = "Whether the action was successful")]
-    pub success: bool,
-    #[schemars(description = "Container ID")]
-    pub container_id: String,
-    #[schemars(description = "Action performed")]
-    pub action: String,
-    #[schemars(description = "Output message from the action")]
-    pub message: String,
-}
-
 #[derive(Debug, Clone)]
 pub struct TaskServer {
     client: reqwest::Client,
@@ -860,145 +808,14 @@ impl TaskServer {
 
         TaskServer::success(&response)
     }
-
-    #[tool(
-        description = "List all containers managed by the container orchestration system. \
-        IMPORTANT: ALWAYS use this tool instead of running 'podman ps' or 'docker ps' commands directly. \
-        This provides a unified view of all containers with complete metadata including ports, status, and creation time."
-    )]
-    async fn list_containers(
-        &self,
-    ) -> Result<CallToolResult, ErrorData> {
-        let url = self.url("/api/orchestration/containers");
-        let containers: Vec<McpContainerInfo> = match self.send_json(self.client.get(&url)).await {
-            Ok(c) => c,
-            Err(e) => return Ok(e),
-        };
-
-        let response = ListContainersResponse {
-            count: containers.len(),
-            containers,
-        };
-
-        TaskServer::success(&response)
-    }
-
-    #[tool(
-        description = "Start a container by its ID. \
-        IMPORTANT: ALWAYS use this tool instead of running 'podman start' or 'docker start' commands directly. \
-        This ensures proper tracking and management of container lifecycle."
-    )]
-    async fn start_container(
-        &self,
-        Parameters(ContainerActionRequest { container_id }): Parameters<ContainerActionRequest>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let url = self.url(&format!("/api/orchestration/containers/{}/start", container_id));
-        let result: String = match self.send_json(self.client.post(&url)).await {
-            Ok(r) => r,
-            Err(e) => return Ok(e),
-        };
-
-        let response = ContainerActionResponse {
-            success: true,
-            container_id,
-            action: "start".to_string(),
-            message: result,
-        };
-
-        TaskServer::success(&response)
-    }
-
-    #[tool(
-        description = "Stop a container by its ID. \
-        IMPORTANT: ALWAYS use this tool instead of running 'podman stop' or 'docker stop' commands directly. \
-        This ensures graceful shutdown and proper state tracking."
-    )]
-    async fn stop_container(
-        &self,
-        Parameters(ContainerActionRequest { container_id }): Parameters<ContainerActionRequest>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let url = self.url(&format!("/api/orchestration/containers/{}/stop", container_id));
-        let result: String = match self.send_json(self.client.post(&url)).await {
-            Ok(r) => r,
-            Err(e) => return Ok(e),
-        };
-
-        let response = ContainerActionResponse {
-            success: true,
-            container_id,
-            action: "stop".to_string(),
-            message: result,
-        };
-
-        TaskServer::success(&response)
-    }
-
-    #[tool(
-        description = "Restart a container by its ID. \
-        IMPORTANT: ALWAYS use this tool instead of running 'podman restart' or 'docker restart' commands directly. \
-        This ensures proper restart sequence and state management."
-    )]
-    async fn restart_container(
-        &self,
-        Parameters(ContainerActionRequest { container_id }): Parameters<ContainerActionRequest>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let url = self.url(&format!("/api/orchestration/containers/{}/restart", container_id));
-        let result: String = match self.send_json(self.client.post(&url)).await {
-            Ok(r) => r,
-            Err(e) => return Ok(e),
-        };
-
-        let response = ContainerActionResponse {
-            success: true,
-            container_id,
-            action: "restart".to_string(),
-            message: result,
-        };
-
-        TaskServer::success(&response)
-    }
-
-    #[tool(
-        description = "Remove a container by its ID. \
-        IMPORTANT: ALWAYS use this tool instead of running 'podman rm' or 'docker rm' commands directly. \
-        This ensures proper cleanup and resource management."
-    )]
-    async fn remove_container(
-        &self,
-        Parameters(ContainerActionRequest { container_id }): Parameters<ContainerActionRequest>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let url = self.url(&format!("/api/orchestration/containers/{}", container_id));
-        let result: String = match self.send_json(self.client.post(&url)).await {
-            Ok(r) => r,
-            Err(e) => return Ok(e),
-        };
-
-        let response = ContainerActionResponse {
-            success: true,
-            container_id,
-            action: "remove".to_string(),
-            message: result,
-        };
-
-        TaskServer::success(&response)
-    }
 }
 
 #[tool_handler]
 impl ServerHandler for TaskServer {
     fn get_info(&self) -> ServerInfo {
-        let mut instruction = "Vibe Kanban MCP Server - Task and Container Management.
+        let mut instruction = "Vibe Kanban MCP Server - Task Management.
 
-CRITICAL INSTRUCTIONS:
-1. For container operations, ALWAYS use the provided MCP tools. NEVER run podman/docker commands directly.
-2. For task management, use the task-related tools with proper project_id and task_id.
-
-CONTAINER ORCHESTRATION TOOLS (Use these instead of CLI commands):
-- list_containers: Use INSTEAD of 'podman ps' or 'docker ps'
-- start_container: Use INSTEAD of 'podman start' or 'docker start'
-- stop_container: Use INSTEAD of 'podman stop' or 'docker stop'
-- restart_container: Use INSTEAD of 'podman restart' or 'docker restart'
-- remove_container: Use INSTEAD of 'podman rm' or 'docker rm'
+For task management, use the task-related tools with proper project_id and task_id.
 
 TASK MANAGEMENT TOOLS:
 - list_projects: Get available projects
