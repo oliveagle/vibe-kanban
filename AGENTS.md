@@ -379,6 +379,9 @@ podman run -d \
   localhost/vibe-kanban:dev-runtime-v0.0.147 \
   sh -c "echo 'root:100000:65536' > /etc/subuid && \
          echo 'root:100000:65536' > /etc/subgid && \
+         mkdir -p /root/.config/opencode && \
+         cat > /root/.config/opencode/opencode.json << 'EOF'
+{\n  \"\$schema\": \"https://opencode.ai/config.json\",\n  \"model\": \"kimi-for-coding\",\n  \"mcp\": {\n    \"vibe_kanban\": {\n      \"type\": \"local\",\n      \"command\": [\n        \"/usr/local/bin/mcp_task_server\"\n      ],\n      \"environment\": {\n        \"VIBE_BACKEND_URL\": \"http://localhost:3000\"\n      }\n    }\n  }\n}\nEOF && \
          cd /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban && \
          cargo run --release --bin server"
 ```
@@ -387,6 +390,7 @@ podman run -d \
 - `--privileged` is required for podman to work inside the container
 - `/mnt/volume3/data` is mounted to access all repos and data
 - subuid/subgid configuration is required for rootless podman
+- opencode.json is automatically created with MCP server configuration
 - This setup allows the VK backend to use `pull_image` MCP tool with proxy support
 
 **Example - Running backend dev container with proxy and Tsinghua mirror (OLD - for reference only):**
