@@ -1,12 +1,12 @@
-name: Build Dev Base Image
+name: Build Base Image
 
 on:
   push:
     branches: [dev, master]
     paths:
-      - 'Dockerfile.dev'
+      - 'Dockerfile'
       - 'crates/**'
-      - '.github/workflows/build-dev-base.yml'
+      - '.github/workflows/build-base.yml'
   workflow_dispatch:
     inputs:
       version:
@@ -16,7 +16,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: oliveagle/vibe-kanban/dev-base
+  IMAGE_NAME: oliveagle/vibe-kanban/base
 
 jobs:
   build-and-push:
@@ -48,16 +48,15 @@ jobs:
           if [ "${{ github.event.inputs.version }}" != "" ]; then
             echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
           else
-            # Extract version from package.json
             VERSION=$(cat package.json | grep '"version"' | head -1 | awk -F: '{ print $2 }' | sed 's/[",]//g' | tr -d '[[:space:]]')
             echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build and push dev-base image
+      - name: Build and push base image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile.dev
+          file: ./Dockerfile
           target: base
           push: true
           tags: |
@@ -65,12 +64,10 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          build-args: |
-            USE_MIRROR=false
 
       - name: Summary
         run: |
-          echo "✅ Dev base image built successfully!"
+          echo "✅ Base image built successfully!"
           echo ""
           echo "Images:"
           echo "  - ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ steps.version.outputs.VERSION }}"
