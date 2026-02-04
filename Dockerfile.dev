@@ -51,18 +51,32 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20.x and npm/npx
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
+# Use Tsinghua mirror when USE_MIRROR=true for faster downloads in China
+RUN if [ "$USE_MIRROR" = "true" ]; then \
+        curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/v20.20.0/node-v20.20.0-linux-x64.tar.xz | tar -xJf - -C /usr/local --strip-components=1; \
+    else \
+        curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+        && apt-get install -y nodejs; \
+    fi \
     && npm install -g npm@latest \
     && rm -rf /var/lib/apt/lists/*
+
+# Configure npm to use Tsinghua mirror when USE_MIRROR=true
+RUN if [ "$USE_MIRROR" = "true" ]; then \
+        npm config set registry https://registry.npmmirror.com; \
+    fi
 
 # Install Rust nightly toolchain (matching rust-toolchain.toml)
 # This prevents downloading on every container start
 RUN rustup toolchain install nightly-2025-12-04 --component rustfmt,rustc,rust-analyzer,rust-src,rust-std,cargo
 
-# Pre-install coding agents to avoid download at runtime
-RUN mkdir -p /opt/agents && cd /opt/agents && \
-    npm install @anthropic-ai/claude-code @openai/codex @google/gemini-cli 2>/dev/null || true
+# Configure cargo to use Tsinghua mirror for crates.io (sparse index)
+RUN mkdir -p /usr/local/cargo && \
+    echo '[registries]' > /usr/local/cargo/config.toml && \
+    echo 'tuna = { index = "sparse+https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/" }' >> /usr/local/cargo/config.toml && \
+    echo '' >> /usr/local/cargo/config.toml && \
+    echo '[source.crates-io]' >> /usr/local/cargo/config.toml && \
+    echo 'replace-with = "tuna"' >> /usr/local/cargo/config.toml
 
 # Install opencode globally (like production backend)
 RUN npm install -g opencode-ai && \
@@ -72,7 +86,21 @@ RUN npm install -g opencode-ai && \
 # Copy source code temporarily to build the binary
 COPY . /tmp/build
 WORKDIR /tmp/build
-RUN cargo build --release --bin mcp_task_server && \
+
+# Configure git to use HTTPS instead of SSH for GitHub (for corporate proxies)
+# and set proxy if available
+ARG HTTPS_PROXY
+ARG HTTP_PROXY
+RUN if [ -n "$HTTPS_PROXY" ]; then \
+        git config --global http.proxy "$HTTPS_PROXY" && \
+        git config --global https.proxy "$HTTPS_PROXY"; \
+    fi && \
+    git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+
+# Download dependencies first (cached layer), then build offline
+# Run `cargo update` manually if you need to update dependencies
+RUN cargo fetch && \
+    cargo build --release --bin mcp_task_server --offline && \
     cp target/release/mcp_task_server /usr/local/bin/mcp_task_server && \
     chmod +x /usr/local/bin/mcp_task_server && \
     rm -rf /tmp/build

@@ -10,29 +10,69 @@ default:
 # DEVELOPMENT WORKFLOW
 # ===========================================
 
-# 构建所有开发环境镜像层 (只需执行一次)
+# 更新 Rust 依赖 (手动触发，更新 Cargo.lock 和下载新依赖)
+dev-update-deps:
+    #!/usr/bin/env bash
+    echo "Updating Rust dependencies..."
+    cargo update
+    echo "✅ Dependencies updated. Run 'just dev-build-all' to rebuild images."
+
+# 切换 Cargo 镜像源 (official/tuna)
+dev-cargo-mirror source="tuna":
+    ./scripts/cargo-mirror.sh {{source}}
+
+# 在运行中的容器里安装 coding agents (Claude Code, Codex, Gemini CLI)
+# 需要容器已启动: just dev-srv
+dev-install-agents:
+    ./scripts/install-agents.sh
+
+# 拉取或构建开发环境镜像
+# 优先从 GitHub Container Registry 拉取预构建的 dev-base（推荐，更快）
+# 如果拉取失败，会回退到本地构建
 dev-build-all:
     #!/usr/bin/env bash
-    echo "Building development environment images..."
+    VERSION="0.0.147"
+    echo "Setting up development environment (v$VERSION)..."
     echo ""
     
-    # Layer 1: Base (Rust + system deps)
-    echo "📦 Building Layer 1: Base (Rust 1.80 + system dependencies)..."
-    podman build -f Dockerfile.dev --target base --build-arg USE_MIRROR=true -t vibe-kanban:dev-base-v0.0.147 .
-    echo "✅ Layer 1 built: vibe-kanban:dev-base-v0.0.147"
+    # Try to pull pre-built dev-base from GitHub
+    echo "📦 Pulling dev-base from GitHub Container Registry..."
+    if podman pull ghcr.io/oliveagle/vibe-kanban/dev-base:v$VERSION 2>/dev/null; then
+        echo "✅ Pulled dev-base from GHCR"
+        podman tag ghcr.io/oliveagle/vibe-kanban/dev-base:v$VERSION vibe-kanban:dev-base-v$VERSION
+    else
+        echo "⚠️  Could not pull from GHCR, building locally..."
+        echo "   This requires good network access to crates.io and github.com"
+        echo ""
+        just dev-build-base
+    fi
     echo ""
     
-    # Layer 2: Runtime
-    echo "📦 Building Layer 2: Runtime..."
-    podman build -f Dockerfile.dev --target dev-runtime --build-arg USE_MIRROR=true -t vibe-kanban:dev-runtime-v0.0.147 .
-    echo "✅ Layer 2 built: vibe-kanban:dev-runtime-v0.0.147"
+    # Build dev-runtime locally (fast, based on dev-base)
+    echo "📦 Building dev-runtime..."
+    podman build -f Dockerfile.dev --target dev-runtime --build-arg USE_MIRROR=true \
+        -t vibe-kanban:dev-runtime-v$VERSION .
+    echo "✅ Built dev-runtime"
     echo ""
     
-    echo "🎉 All development images built successfully!"
+    echo "🎉 Development environment ready!"
     echo ""
     echo "Available images:"
-    echo "  - vibe-kanban:dev-base-v0.0.147    (Rust 1.80 + system deps)"
-    echo "  - vibe-kanban:dev-runtime-v0.0.147 (Full dev environment)"
+    echo "  - vibe-kanban:dev-base-v$VERSION    (Rust + system deps)"
+    echo "  - vibe-kanban:dev-runtime-v$VERSION (Full dev environment)"
+
+# 本地构建 dev-base（需要良好的网络环境）
+dev-build-base:
+    #!/usr/bin/env bash
+    VERSION="0.0.147"
+    echo "Building dev-base locally..."
+    echo "⚠️  This requires access to crates.io and github.com"
+    echo ""
+    podman build -f Dockerfile.dev --network=host --target base \
+        --build-arg USE_MIRROR=false \
+        --build-arg HTTPS_PROXY=http://localhost:1080 \
+        --build-arg HTTP_PROXY=http://localhost:1080 \
+        -t vibe-kanban:dev-base-v$VERSION .
 
 # 启动后端开发容器 (port 3000)
 # Usage: just dev-srv        # 前台运行

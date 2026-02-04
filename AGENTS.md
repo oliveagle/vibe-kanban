@@ -56,9 +56,26 @@ When making any changes that affect:
 ## Container-Based Development Commands (Just)
 
 **Build dev images:**
+
+The development environment uses a two-layer architecture:
+
+1. **dev-base** (Layer 1): Rust toolchain + system dependencies
+   - Pre-built by GitHub Actions and published to GHCR
+   - `just dev-build-all` will automatically pull this image
+   - Only rebuild locally if you need custom changes: `just dev-build-base`
+
+2. **dev-runtime** (Layer 2): Development runtime configuration
+   - Built locally on top of dev-base
+   - Fast to build (~1-2 minutes)
+
 ```bash
-just dev-build-all
+just dev-build-all        # Pull dev-base from GHCR, build dev-runtime locally
+just dev-build-base       # Build dev-base locally (slow, needs good network)
 ```
+
+**Image Sources:**
+- **GitHub Container Registry** (recommended): `ghcr.io/oliveagle/vibe-kanban/dev-base:v{version}`
+- **Local build** (fallback): Build from Dockerfile.dev with official sources
 
 **Start backend in container:**
 ```bash
@@ -79,6 +96,13 @@ just dev-srv-stop
 just dev-ui-stop
 ```
 
+**Install coding agents (optional):**
+```bash
+just dev-install-agents   # Install Claude Code, Codex, Gemini CLI
+```
+
+Coding agents are not installed by default to avoid slowing down container startup. Run this command manually after starting the container. The installation is persistent across container restarts.
+
 **Dev container options:**
 - Backend: `--network vibe-kanban-dev` for shared network
 - Frontend: `--build` flag for production mode with pre-built bundle
@@ -88,20 +112,76 @@ just dev-ui-stop
 - TypeScript/React: ESLint + Prettier (2 spaces, single quotes, 80 cols). PascalCase components, camelCase vars/functions, kebab-case file names where practical.
 - Keep functions small, add `Debug`/`Serialize`/`Deserialize` where useful.
 
+## Justfile & Script Organization
+
+**Keep justfile simple - complex logic goes in scripts:**
+
+- justfile should only contain simple command invocations (1-2 lines)
+- Complex bash logic (>5 lines or heredocs) must go in `scripts/` directory
+- This prevents justfile parsing issues (e.g., `[source]` being interpreted as just syntax)
+- Scripts in `scripts/` must be executable (`chmod +x`)
+
+**Example:**
+```just
+# Good - simple invocation
+dev-cargo-mirror source="tuna":
+    ./scripts/cargo-mirror.sh {{source}}
+
+# Bad - complex logic in justfile
+dev-cargo-mirror source="tuna":
+    #!/usr/bin/env bash
+    if [ "{{source}}" = "tuna" ]; then
+        cat > "$CARGO_CONFIG" << 'EOF'
+[source.crates-io]
+replace-with = "tuna"
+EOF
+    fi
+```
+
 ## Testing Guidelines
 - Rust: prefer unit tests alongside code (`#[cfg(test)]`), run `cargo test --workspace`. Add tests for new logic and edge cases.
 - Frontend: ensure `pnpm run check` and `pnpm run lint` pass. If adding runtime logic, include lightweight tests (e.g., Vitest) in the same directory.
 
 ## Container Architecture
 
+### Image Consistency Rule
+
+**Development and production images must maintain structural and functional consistency:**
+
+| Aspect | Requirement |
+|--------|-------------|
+| **Base Image** | Same OS version (rust:1.80-slim-bookworm) |
+| **System Dependencies** | Same apt packages installed |
+| **Directory Structure** | Same file locations and paths |
+| **Tool Installations** | Same tools: opencode, nvim, podman, mcp_task_server, etc. |
+| **Functionality** | Same capabilities and behaviors |
+| **Only Difference** | Development image uses domestic mirrors for faster builds in China |
+
+**⚠️ CRITICAL:** All tools (opencode, nvim, podman, mcp_task_server, etc.) **MUST** be installed in the **Dockerfile** during image build, NOT at runtime. Containers are ephemeral - runtime changes are lost on restart.
+
 ### GitHub Registry Images (Production)
+
+**Source Configuration: Use official sources only**
+- apt: Official Debian repositories
+- cargo/crates.io: Official registry
+- npm: Official registry.npmjs.org
+
+**Images:**
 - `ghcr.io/oliveagle/vibe-kanban/backend:latest` - Backend API only. **Note**: Compiled with placeholder HTML if frontend/dist missing. Serves API on port 3000.
 - `ghcr.io/oliveagle/vibe-kanban/frontend:latest` - Frontend static files only. Nginx serves on port 80, proxies `/api` to backend service.
 - **Must deploy together**: Frontend container proxies API requests to backend container via docker-compose internal network.
 
-### Local Image (Development)
-- `vibe-kanban:local` - Combined image with both frontend and backend. Use `just container-build` to create.
-- Single container serves both frontend (port 80) and API (port 3000).
+### Development Images (Dockerfile.dev)
+
+**Source Configuration: Use domestic mirrors when available**
+- apt: Tsinghua University mirror (when `USE_MIRROR=true`)
+- cargo/crates.io: Tsinghua sparse index (when `USE_MIRROR=true`)
+- npm: Taobao mirror (when `USE_MIRROR=true`)
+
+**Images:**
+- `vibe-kanban:dev-base-v{version}` - Base layer with Rust + system deps + mirrors
+- `vibe-kanban:dev-runtime-v{version}` - Runtime layer with cargo-watch + proxy config
+- `vibe-kanban:local` - Combined production-like image. Use `just container-build` to create.
 
 ### Agent Detection in Containers
 - opencode requires `/root/.config/opencode/opencode.json` or `/root/.config/opencode/` directory to be detected as "installed".
@@ -152,14 +232,16 @@ cp -rL $(readlink dir_name) dir_name
 - Available at: `/usr/bin/nvim`
 - Fallback: `vim` or `vi`
 
-**⚠️ CRITICAL:** All tools (opencode, nvim, etc.) **MUST** be installed in the **Dockerfile** during image build, NOT at runtime. 
+**Current tools installed in Dockerfile.dev:**
+- `opencode` - via `npm install -g opencode-ai`
+- `nvim` - via `apt-get install neovim`
+- `podman` - via `apt-get install podman`
+- `mcp_task_server` - built from source during image build
 
-**Why?** Containers are ephemeral - any changes made at runtime (e.g., `apt-get install` inside a running container) will be **LOST** when the container restarts. Only changes in the Dockerfile are persisted in the image.
-
-**Correct way to add tools:**
-1. Edit `Dockerfile.dev` to add the tool installation
-2. Rebuild the image: `just dev-build-all` or `podman build -f Dockerfile.dev ...`
-3. Restart the container with the new image
+To use these defaults, ensure:
+1. Container is started with proper volume mounts (see Container-Based Development below)
+2. opencode.json is created with MCP configuration
+3. Tools are installed in Dockerfile (see Dockerfile.dev)
 
 **Current tools installed in Dockerfile.dev:**
 - `opencode` - via `npm install -g opencode-ai`

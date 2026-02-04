@@ -14,6 +14,9 @@ PORT="3000"
 VK_DATA_DIR="$HOME/.local/share/vibe-kanban"
 mkdir -p "$VK_DATA_DIR"
 
+NPM_CACHE_DIR="$HOME/.cache/vibe-kanban/npm"
+mkdir -p "$NPM_CACHE_DIR"
+
 echo "Stopping existing container..."
 podman stop "$CONTAINER_NAME" 2>/dev/null || true
 podman rm "$CONTAINER_NAME" 2>/dev/null || true
@@ -34,6 +37,7 @@ if [ "$DAEMON_MODE" = true ]; then
         -v /mnt/volume3/data:/mnt/volume3/data:rw \
         -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
         -v "$VK_DATA_DIR":/root/.local/share/vibe-kanban:rw \
+        -v "$NPM_CACHE_DIR":/root/.npm:rw \
         "$IMAGE" \
         /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban/scripts/init-and-run.sh
 
@@ -54,6 +58,7 @@ else
         -v /mnt/volume3/data:/mnt/volume3/data:rw \
         -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
         -v "$VK_DATA_DIR":/root/.local/share/vibe-kanban:rw \
+        -v "$NPM_CACHE_DIR":/root/.npm:rw \
         "$IMAGE" \
         /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban/scripts/init-and-run.sh
 fi
