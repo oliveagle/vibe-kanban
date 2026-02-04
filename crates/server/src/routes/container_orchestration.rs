@@ -295,10 +295,26 @@ pub struct PullImageRequest {
     pub image: String,
 }
 
+fn normalize_image_name(image: &str) -> String {
+    // If image already has a registry prefix, use it as-is
+    if image.contains('/') {
+        return image.to_string();
+    }
+    // For short names like "nginx:alpine", prepend docker.io/library/
+    if image.contains(':') {
+        format!("docker.io/library/{}", image)
+    } else {
+        format!("docker.io/library/{}:latest", image)
+    }
+}
+
 pub async fn pull_image(
     State(_deployment): State<DeploymentImpl>,
     axum::Json(payload): axum::Json<PullImageRequest>,
 ) -> Result<ResponseJson<ApiResponse<String>>, ApiError> {
+    // Normalize image name to full path
+    let full_image_name = normalize_image_name(&payload.image);
+    
     // Get proxy settings from environment or use VK default
     let https_proxy = std::env::var("HTTPS_PROXY")
         .or_else(|_| std::env::var("https_proxy"))
@@ -309,7 +325,7 @@ pub async fn pull_image(
         .unwrap_or_else(|_| "http://host.containers.internal:1080".to_string());
 
     let output = tokio::process::Command::new("podman")
-        .args(["pull", &payload.image])
+        .args(["pull", &full_image_name])
         .env("HTTPS_PROXY", &https_proxy)
         .env("HTTP_PROXY", &http_proxy)
         .env("https_proxy", &https_proxy)
