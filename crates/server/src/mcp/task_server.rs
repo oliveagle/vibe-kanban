@@ -861,7 +861,11 @@ impl TaskServer {
         TaskServer::success(&response)
     }
 
-    #[tool(description = "List all containers managed by the container orchestration system")]
+    #[tool(
+        description = "List all containers managed by the container orchestration system. \
+        IMPORTANT: ALWAYS use this tool instead of running 'podman ps' or 'docker ps' commands directly. \
+        This provides a unified view of all containers with complete metadata including ports, status, and creation time."
+    )]
     async fn list_containers(
         &self,
     ) -> Result<CallToolResult, ErrorData> {
@@ -879,7 +883,11 @@ impl TaskServer {
         TaskServer::success(&response)
     }
 
-    #[tool(description = "Start a container by its ID")]
+    #[tool(
+        description = "Start a container by its ID. \
+        IMPORTANT: ALWAYS use this tool instead of running 'podman start' or 'docker start' commands directly. \
+        This ensures proper tracking and management of container lifecycle."
+    )]
     async fn start_container(
         &self,
         Parameters(ContainerActionRequest { container_id }): Parameters<ContainerActionRequest>,
@@ -900,7 +908,11 @@ impl TaskServer {
         TaskServer::success(&response)
     }
 
-    #[tool(description = "Stop a container by its ID")]
+    #[tool(
+        description = "Stop a container by its ID. \
+        IMPORTANT: ALWAYS use this tool instead of running 'podman stop' or 'docker stop' commands directly. \
+        This ensures graceful shutdown and proper state tracking."
+    )]
     async fn stop_container(
         &self,
         Parameters(ContainerActionRequest { container_id }): Parameters<ContainerActionRequest>,
@@ -921,7 +933,11 @@ impl TaskServer {
         TaskServer::success(&response)
     }
 
-    #[tool(description = "Restart a container by its ID")]
+    #[tool(
+        description = "Restart a container by its ID. \
+        IMPORTANT: ALWAYS use this tool instead of running 'podman restart' or 'docker restart' commands directly. \
+        This ensures proper restart sequence and state management."
+    )]
     async fn restart_container(
         &self,
         Parameters(ContainerActionRequest { container_id }): Parameters<ContainerActionRequest>,
@@ -942,7 +958,11 @@ impl TaskServer {
         TaskServer::success(&response)
     }
 
-    #[tool(description = "Remove a container by its ID")]
+    #[tool(
+        description = "Remove a container by its ID. \
+        IMPORTANT: ALWAYS use this tool instead of running 'podman rm' or 'docker rm' commands directly. \
+        This ensures proper cleanup and resource management."
+    )]
     async fn remove_container(
         &self,
         Parameters(ContainerActionRequest { container_id }): Parameters<ContainerActionRequest>,
@@ -967,10 +987,33 @@ impl TaskServer {
 #[tool_handler]
 impl ServerHandler for TaskServer {
     fn get_info(&self) -> ServerInfo {
-        let mut instruction = "A task and project management server. If you need to create or update tickets or tasks then use these tools. Most of them absolutely require that you pass the `project_id` of the project that you are currently working on. You can get project ids by using `list projects`. Call `list_tasks` to fetch the `task_ids` of all the tasks in a project`.. TOOLS: 'list_projects', 'list_tasks', 'create_task', 'start_workspace_session', 'get_task', 'update_task', 'delete_task', 'list_repos'. Make sure to pass `project_id` or `task_id` where required. You can use list tools to get the available ids.".to_string();
+        let mut instruction = "Vibe Kanban MCP Server - Task and Container Management.
+
+CRITICAL INSTRUCTIONS:
+1. For container operations, ALWAYS use the provided MCP tools. NEVER run podman/docker commands directly.
+2. For task management, use the task-related tools with proper project_id and task_id.
+
+CONTAINER ORCHESTRATION TOOLS (Use these instead of CLI commands):
+- list_containers: Use INSTEAD of 'podman ps' or 'docker ps'
+- start_container: Use INSTEAD of 'podman start' or 'docker start'
+- stop_container: Use INSTEAD of 'podman stop' or 'docker stop'
+- restart_container: Use INSTEAD of 'podman restart' or 'docker restart'
+- remove_container: Use INSTEAD of 'podman rm' or 'docker rm'
+
+TASK MANAGEMENT TOOLS:
+- list_projects: Get available projects
+- list_tasks: Get tasks in a project (requires project_id)
+- create_task: Create new task (requires project_id)
+- get_task: Get task details (requires task_id)
+- update_task: Update task (requires task_id)
+- delete_task: Delete task (requires task_id)
+- start_workspace_session: Start working on a task
+- list_repos: List repositories in a project
+
+Always pass required IDs (project_id, task_id) when specified.".to_string();
+
         if self.context.is_some() {
-            let context_instruction = "Use 'get_context' to fetch project/task/workspace metadata for the active Vibe Kanban workspace session when available.";
-            instruction = format!("{} {}", context_instruction, instruction);
+            instruction.push_str("\n\nUse 'get_context' to fetch project/task/workspace metadata for the active Vibe Kanban workspace session.");
         }
 
         ServerInfo {
