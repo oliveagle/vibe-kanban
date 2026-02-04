@@ -18,21 +18,21 @@ dev-build-all:
     
     # Layer 1: Base (Rust + system deps)
     echo "📦 Building Layer 1: Base (Rust 1.80 + system dependencies)..."
-    podman build -f Dockerfile.dev --target base --build-arg USE_MIRROR=true -t vibe-kanban:dev-base-v1.0.0 .
-    echo "✅ Layer 1 built: vibe-kanban:dev-base-v1.0.0"
+    podman build -f Dockerfile.dev --target base --build-arg USE_MIRROR=true -t vibe-kanban:dev-base-v0.0.146 .
+    echo "✅ Layer 1 built: vibe-kanban:dev-base-v0.0.146"
     echo ""
     
     # Layer 2: Runtime
     echo "📦 Building Layer 2: Runtime..."
-    podman build -f Dockerfile.dev --target dev-runtime --build-arg USE_MIRROR=true -t vibe-kanban:dev-runtime-v1.0.0 .
-    echo "✅ Layer 2 built: vibe-kanban:dev-runtime-v1.0.0"
+    podman build -f Dockerfile.dev --target dev-runtime --build-arg USE_MIRROR=true -t vibe-kanban:dev-runtime-v0.0.146 .
+    echo "✅ Layer 2 built: vibe-kanban:dev-runtime-v0.0.146"
     echo ""
     
     echo "🎉 All development images built successfully!"
     echo ""
     echo "Available images:"
-    echo "  - vibe-kanban:dev-base-v1.0.0    (Rust 1.80 + system deps)"
-    echo "  - vibe-kanban:dev-runtime-v1.0.0 (Full dev environment)"
+    echo "  - vibe-kanban:dev-base-v0.0.146    (Rust 1.80 + system deps)"
+    echo "  - vibe-kanban:dev-runtime-v0.0.146 (Full dev environment)"
 
 # 启动后端开发容器 (port 3000) - 交互模式
 # Usage: just dev-srv        # 前台运行 (推荐)
@@ -46,7 +46,7 @@ dev-srv *args:
     fi
     
     # Check if dev image exists (use versioned tag)
-    if ! podman images | grep -q "vibe-kanban.*dev-runtime-v1.0.0"; then
+    if ! podman images | grep -q "vibe-kanban.*dev-runtime-v0.0.146"; then
         echo "Dev image not found, building all layers..."
         just dev-build-all
     fi
@@ -81,7 +81,7 @@ dev-srv *args:
                 -v /var/tmp:/var/tmp:rw \
                 -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
                 --workdir /app \
-                vibe-kanban:dev-runtime-v1.0.0 \
+                vibe-kanban:dev-runtime-v0.0.146 \
                 sh -c "cargo run --bin server"
         else
             podman run -d \
@@ -100,7 +100,7 @@ dev-srv *args:
                 -v /var/tmp:/var/tmp:rw \
                 -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
                 --workdir /app \
-                vibe-kanban:dev-runtime-v1.0.0
+                vibe-kanban:dev-runtime-v0.0.146
         fi
         echo "✅ Backend dev container started on http://localhost:3000"
         echo "View logs: podman logs -f vibe-kanban-backend-dev"
@@ -124,7 +124,7 @@ dev-srv *args:
                 -v /var/tmp:/var/tmp:rw \
                 -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
                 --workdir /app \
-                vibe-kanban:dev-runtime-v1.0.0 \
+                vibe-kanban:dev-runtime-v0.0.146 \
                 sh -c "cargo run --bin server"
         else
             podman run -ti \
@@ -143,7 +143,7 @@ dev-srv *args:
                 -v /var/tmp:/var/tmp:rw \
                 -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
                 --workdir /app \
-                vibe-kanban:dev-runtime-v1.0.0
+                vibe-kanban:dev-runtime-v0.0.146
         fi
     fi
 
