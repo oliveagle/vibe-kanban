@@ -68,39 +68,36 @@ dev-srv *args:
             podman run -d \
                 --name vibe-kanban-backend-dev \
                 --replace \
+                --privileged \
                 --network vibe-kanban-dev \
                 -p 3000:3000 \
                 -e HOST=0.0.0.0 \
                 -e PORT=3000 \
                 -e VK_SHARED_API_BASE=http://localhost:3000 \
+                -e VIBE_BACKEND_URL=http://localhost:3000 \
                 -e RUST_LOG=debug \
                 -e DISABLE_WORKTREE_ORPHAN_CLEANUP=1 \
-                -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban:/app:rw \
-                -v ${HOME}/repos:/repos:ro \
-                -v /mnt/volume3/data/repos:/mnt/volume3/data/repos:rw \
-                -v /var/tmp:/var/tmp:rw \
+                -v /mnt/volume3/data:/mnt/volume3/data:rw \
                 -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
-                --workdir /app \
                 vibe-kanban:dev-runtime-v0.0.147 \
-                sh -c "cargo run --bin server"
+                sh -c "echo 'root:100000:65536' > /etc/subuid && echo 'root:100000:65536' > /etc/subgid && mkdir -p /root/.config/opencode && echo '{\"\\\$schema\": \"https://opencode.ai/config.json\", \"model\": \"kimi-for-coding\", \"mcp\": {\"vibe_kanban\": {\"type\": \"local\", \"command\": [\"/usr/local/bin/mcp_task_server\"], \"environment\": {\"VIBE_BACKEND_URL\": \"http://localhost:3000\"}}}}' > /root/.config/opencode/opencode.json && cd /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban && cargo run --bin server"
         else
             podman run -d \
                 --name vibe-kanban-backend-dev \
                 --replace \
+                --privileged \
                 --network vibe-kanban-dev \
                 -p 3000:3000 \
                 -e HOST=0.0.0.0 \
                 -e PORT=3000 \
                 -e VK_SHARED_API_BASE=http://localhost:3000 \
+                -e VIBE_BACKEND_URL=http://localhost:3000 \
                 -e RUST_LOG=debug \
                 -e DISABLE_WORKTREE_ORPHAN_CLEANUP=1 \
-                -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban:/app:rw \
-                -v ${HOME}/repos:/repos:ro \
-                -v /mnt/volume3/data/repos:/mnt/volume3/data/repos:rw \
-                -v /var/tmp:/var/tmp:rw \
+                -v /mnt/volume3/data:/mnt/volume3/data:rw \
                 -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
-                --workdir /app \
-                vibe-kanban:dev-runtime-v0.0.147
+                vibe-kanban:dev-runtime-v0.0.147 \
+                sh -c "echo 'root:100000:65536' > /etc/subuid && echo 'root:100000:65536' > /etc/subgid && mkdir -p /root/.config/opencode && echo '{\"\\\$schema\": \"https://opencode.ai/config.json\", \"model\": \"kimi-for-coding\", \"mcp\": {\"vibe_kanban\": {\"type\": \"local\", \"command\": [\"/usr/local/bin/mcp_task_server\"], \"environment\": {\"VIBE_BACKEND_URL\": \"http://localhost:3000\"}}}}' > /root/.config/opencode/opencode.json && cd /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban && cargo watch -w crates -x 'run --bin server'"
         fi
         echo "✅ Backend dev container started on http://localhost:3000"
         echo "View logs: podman logs -f vibe-kanban-backend-dev"
@@ -111,39 +108,36 @@ dev-srv *args:
             podman run -ti \
                 --name vibe-kanban-backend-dev \
                 --replace \
+                --privileged \
                 --network vibe-kanban-dev \
                 -p 3000:3000 \
                 -e HOST=0.0.0.0 \
                 -e PORT=3000 \
                 -e VK_SHARED_API_BASE=http://localhost:3000 \
+                -e VIBE_BACKEND_URL=http://localhost:3000 \
                 -e RUST_LOG=debug \
                 -e DISABLE_WORKTREE_ORPHAN_CLEANUP=1 \
-                -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban:/app:rw \
-                -v ${HOME}/repos:/repos:ro \
-                -v /mnt/volume3/data/repos:/mnt/volume3/data/repos:rw \
-                -v /var/tmp:/var/tmp:rw \
+                -v /mnt/volume3/data:/mnt/volume3/data:rw \
                 -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
-                --workdir /app \
                 vibe-kanban:dev-runtime-v0.0.147 \
-                sh -c "cargo run --bin server"
+                sh -c "echo 'root:100000:65536' > /etc/subuid && echo 'root:100000:65536' > /etc/subgid && mkdir -p /root/.config/opencode && echo '{\"\\\$schema\": \"https://opencode.ai/config.json\", \"model\": \"kimi-for-coding\", \"mcp\": {\"vibe_kanban\": {\"type\": \"local\", \"command\": [\"/usr/local/bin/mcp_task_server\"], \"environment\": {\"VIBE_BACKEND_URL\": \"http://localhost:3000\"}}}}' > /root/.config/opencode/opencode.json && cd /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban && cargo run --bin server"
         else
             podman run -ti \
                 --name vibe-kanban-backend-dev \
                 --replace \
+                --privileged \
                 --network vibe-kanban-dev \
                 -p 3000:3000 \
                 -e HOST=0.0.0.0 \
                 -e PORT=3000 \
                 -e VK_SHARED_API_BASE=http://localhost:3000 \
+                -e VIBE_BACKEND_URL=http://localhost:3000 \
                 -e RUST_LOG=debug \
                 -e DISABLE_WORKTREE_ORPHAN_CLEANUP=1 \
-                -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban:/app:rw \
-                -v ${HOME}/repos:/repos:ro \
-                -v /mnt/volume3/data/repos:/mnt/volume3/data/repos:rw \
-                -v /var/tmp:/var/tmp:rw \
+                -v /mnt/volume3/data:/mnt/volume3/data:rw \
                 -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
-                --workdir /app \
-                vibe-kanban:dev-runtime-v0.0.147
+                vibe-kanban:dev-runtime-v0.0.147 \
+                sh -c "echo 'root:100000:65536' > /etc/subuid && echo 'root:100000:65536' > /etc/subgid && mkdir -p /root/.config/opencode && echo '{\"\\\$schema\": \"https://opencode.ai/config.json\", \"model\": \"kimi-for-coding\", \"mcp\": {\"vibe_kanban\": {\"type\": \"local\", \"command\": [\"/usr/local/bin/mcp_task_server\"], \"environment\": {\"VIBE_BACKEND_URL\": \"http://localhost:3000\"}}}}' > /root/.config/opencode/opencode.json && cd /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban && cargo watch -w crates -x 'run --bin server'"
         fi
     fi
 
