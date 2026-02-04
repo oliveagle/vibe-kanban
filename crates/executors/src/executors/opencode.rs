@@ -12,7 +12,8 @@ use crate::{
     command::{CmdOverrides, CommandBuilder, apply_overrides},
     env::ExecutionEnv,
     executors::{
-        AppendPrompt, AvailabilityInfo, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
+        AppendPrompt, AvailabilityInfo, CodingAgent, ExecutorError, SpawnedChild,
+        StandardCodingAgentExecutor,
         acp::AcpAgentHarness,
     },
 };
@@ -60,7 +61,10 @@ impl StandardCodingAgentExecutor for Opencode {
         prompt: &str,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let combined_prompt = self.append_prompt.combine_prompt(prompt);
+        // Inject system prompt to encourage MCP tool usage
+        let system_prompt = CodingAgent::Opencode(self.clone()).system_prompt();
+        let prompt_with_system = format!("{}\n\n{}", system_prompt, prompt);
+        let combined_prompt = self.append_prompt.combine_prompt(&prompt_with_system);
 
         let mut harness = Self::harness();
         if let Some(model) = &self.model {
@@ -95,7 +99,10 @@ impl StandardCodingAgentExecutor for Opencode {
         session_id: &str,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let combined_prompt = self.append_prompt.combine_prompt(prompt);
+        // Inject system prompt to encourage MCP tool usage
+        let system_prompt = CodingAgent::Opencode(self.clone()).system_prompt();
+        let prompt_with_system = format!("{}\n\n{}", system_prompt, prompt);
+        let combined_prompt = self.append_prompt.combine_prompt(&prompt_with_system);
         let mut harness = Self::harness();
         if let Some(model) = &self.model {
             harness = harness.with_model(model);

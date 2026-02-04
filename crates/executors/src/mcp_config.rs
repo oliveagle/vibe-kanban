@@ -304,4 +304,23 @@ impl CodingAgent {
         let canonical = PRECONFIGURED_MCP_SERVERS.clone();
         apply_adapter(adapter, canonical)
     }
+
+    /// Get the system prompt that should be injected when starting this agent
+    /// This ensures the agent uses MCP tools instead of running CLI commands directly
+    pub fn system_prompt(&self) -> String {
+        let base_prompt = "You are running inside a Vibe Kanban managed workspace with access to container orchestration tools via MCP.\n\nCRITICAL INSTRUCTIONS:\n1. For container operations (listing, starting, stopping, restarting, removing containers), ALWAYS use the provided MCP tools.\n2. NEVER run 'podman', 'docker', 'kubectl', or similar container CLI commands directly.\n3. Use 'list_containers' to see all containers instead of 'podman ps'.\n4. Use 'start_container', 'stop_container', 'restart_container', 'remove_container' for container lifecycle operations.\n5. The MCP tools provide better integration, logging, and safety checks than direct CLI usage.\n\nAvailable container tools: list_containers, start_container, stop_container, restart_container, remove_container.";
+
+        match self {
+            CodingAgent::Opencode(_) => {
+                format!("{}\n\nOpencode-specific: When you need to manage containers, use the MCP tools exposed by the vibe_kanban server. Check available tools with /tools if unsure.", base_prompt)
+            }
+            CodingAgent::ClaudeCode(_) => {
+                format!("{}\n\nClaude Code-specific: You have access to container management through MCP. Always prefer MCP tools over shell commands for container operations.", base_prompt)
+            }
+            CodingAgent::Codex(_) => {
+                format!("{}\n\nCodex-specific: Use the MCP server for container operations. Do not execute podman/docker commands in the terminal.", base_prompt)
+            }
+            _ => base_prompt.to_string(),
+        }
+    }
 }
