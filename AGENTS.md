@@ -365,7 +365,31 @@ When running containers that need internet access (e.g., for downloading depende
 
 **Proxy URL:** `http://host.containers.internal:1080`
 
-**Example - Running backend dev container with proxy and Tsinghua mirror:**
+**Correct way to start backend dev container (with privileged mode for podman):**
+```bash
+podman run -d \
+  --name vibe-kanban-backend-dev \
+  --privileged \
+  -p 3000:3000 \
+  -v /mnt/volume3/data:/mnt/volume3/data:rw \
+  -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
+  -e HOST=0.0.0.0 \
+  -e PORT=3000 \
+  -e VIBE_BACKEND_URL=http://localhost:3000 \
+  localhost/vibe-kanban:dev-runtime-v0.0.147 \
+  sh -c "echo 'root:100000:65536' > /etc/subuid && \
+         echo 'root:100000:65536' > /etc/subgid && \
+         cd /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban && \
+         cargo run --release --bin server"
+```
+
+**Notes:**
+- `--privileged` is required for podman to work inside the container
+- `/mnt/volume3/data` is mounted to access all repos and data
+- subuid/subgid configuration is required for rootless podman
+- This setup allows the VK backend to use `pull_image` MCP tool with proxy support
+
+**Example - Running backend dev container with proxy and Tsinghua mirror (OLD - for reference only):**
 ```bash
 podman run -d \
   --name vibe-kanban-backend-dev \
