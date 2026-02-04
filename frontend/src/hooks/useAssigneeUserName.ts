@@ -13,8 +13,13 @@ export function useAssigneeUserNames(options: UseAssigneeUserNamesOptions) {
 
   const { data: assignees, refetch } = useQuery<UserData[], Error>({
     queryKey: ['project', 'assignees', projectId],
-    queryFn: () => getSharedTaskAssignees(projectId!),
-    enabled: Boolean(projectId),
+    queryFn: () => {
+      if (!projectId) {
+        throw new Error('Project ID is required');
+      }
+      return getSharedTaskAssignees(projectId);
+    },
+    enabled: !!projectId && projectId !== 'undefined',
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 

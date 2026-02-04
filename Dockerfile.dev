@@ -56,6 +56,14 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 # This prevents downloading on every container start
 RUN rustup toolchain install nightly-2025-12-04 --component rustfmt,rustc,rust-analyzer,rust-src,rust-std,cargo
 
+# Pre-install coding agents to avoid download at runtime
+RUN mkdir -p /opt/agents && cd /opt/agents && \
+    npm install @anthropic-ai/claude-code @openai/codex @google/gemini-cli 2>/dev/null || true
+
+# Install opencode globally (like production backend)
+RUN npm install -g opencode-ai && \
+    ln -s $(which opencode) /usr/local/bin/opencode || true
+
 WORKDIR /app
 
 # ============================================
@@ -67,6 +75,15 @@ ENV HOST=0.0.0.0
 ENV PORT=3001
 ENV RUST_LOG=debug
 ENV DISABLE_WORKTREE_ORPHAN_CLEANUP=1
+
+# Configure cargo to use proxy for crate downloads (host proxy at port 1080)
+# Note: This is separate from system proxy to avoid breaking Node.js fetch
+RUN mkdir -p /usr/local/cargo && \
+    echo '[http]' > /usr/local/cargo/config.toml && \
+    echo 'proxy = "http://host.containers.internal:1080"' >> /usr/local/cargo/config.toml && \
+    echo '' >> /usr/local/cargo/config.toml && \
+    echo '[https]' >> /usr/local/cargo/config.toml && \
+    echo 'proxy = "http://host.containers.internal:1080"' >> /usr/local/cargo/config.toml
 
 EXPOSE 3001
 

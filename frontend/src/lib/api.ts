@@ -110,9 +110,8 @@ export class ApiError<E = unknown> extends Error {
   }
 }
 
-const API_BASE_URL = typeof window !== 'undefined' 
-  ? `${window.location.protocol}//${window.location.host.replace(/:\d+$/, '')}:3001`
-  : 'http://localhost:3001';
+// API_BASE_URL is empty because frontend is served by the backend on the same origin
+const API_BASE_URL = '';
 
 const makeRequest = async (url: string, options: RequestInit = {}) => {
   const headers = new Headers(options.headers ?? {});

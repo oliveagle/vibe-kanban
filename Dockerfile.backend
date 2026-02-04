@@ -1,4 +1,4 @@
-# Backend Dockerfile - Rust server only
+# Backend Dockerfile - Rust server with embedded frontend
 FROM rust:1.93-slim-bookworm AS builder
 
 # Use Tsinghua mirror for local development (CI will use default)
@@ -22,11 +22,14 @@ WORKDIR /app
 # Copy assets for rust_embed (must be before crates for correct relative path)
 COPY assets ./assets
 
+# Copy frontend dist for embedding (required by rust_embed)
+COPY frontend/dist ./frontend/dist
+
 # Copy Cargo files for caching
 COPY crates ./crates
 COPY Cargo.toml Cargo.lock ./
 
-# Build release binary (bundled sqlite is now in Cargo.toml)
+# Build release binary (frontend is embedded via rust_embed)
 RUN cargo build --release --bin server
 
 # Runtime stage

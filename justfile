@@ -34,14 +34,14 @@ dev-build-all:
     echo "  - vibe-kanban:dev-base-v1.0.0    (Rust 1.80 + system deps)"
     echo "  - vibe-kanban:dev-runtime-v1.0.0 (Full dev environment)"
 
-# 启动后端开发容器 (port 3001) - 交互模式
+# 启动后端开发容器 (port 3000) - 交互模式
 # Usage: just dev-srv        # 前台运行 (推荐)
 #        just dev-srv -d     # 后台运行
 #        just dev-srv --no-build  # 直接运行已编译的二进制（跳过 cargo build）
 dev-srv *args:
     #!/usr/bin/env bash
-    if lsof -Pi :3001 -sTCP:LISTEN -t >/dev/null 2>&1; then
-        echo "Error: Port 3001 is already in use"
+    if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+        echo "Error: Port 3000 is already in use"
         exit 1
     fi
     
@@ -62,21 +62,19 @@ dev-srv *args:
     fi
     
     # Check if -d (daemon) mode
-    if [[ "{{args}}" == *"-d"* ]]; then
+        if [[ "{{args}}" == *"-d"* ]]; then
         echo "Starting backend development container in background..."
         if [[ "$RUN_MODE" == "direct" ]]; then
             podman run -d \
                 --name vibe-kanban-backend-dev \
                 --replace \
                 --network vibe-kanban-dev \
-                -p 3001:3001 \
+                -p 3000:3000 \
                 -e HOST=0.0.0.0 \
-                -e PORT=3001 \
-                -e VK_SHARED_API_BASE=http://localhost:3001 \
+                -e PORT=3000 \
+                -e VK_SHARED_API_BASE=http://localhost:3000 \
                 -e RUST_LOG=debug \
                 -e DISABLE_WORKTREE_ORPHAN_CLEANUP=1 \
-                -e https_proxy=http://host.containers.internal:1080 \
-                -e http_proxy=http://host.containers.internal:1080 \
                 -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban:/app:rw \
                 -v ${HOME}/repos:/repos:ro \
                 -v /mnt/volume3/data/repos:/mnt/volume3/data/repos:rw \
@@ -90,14 +88,12 @@ dev-srv *args:
                 --name vibe-kanban-backend-dev \
                 --replace \
                 --network vibe-kanban-dev \
-                -p 3001:3001 \
+                -p 3000:3000 \
                 -e HOST=0.0.0.0 \
-                -e PORT=3001 \
-                -e VK_SHARED_API_BASE=http://localhost:3001 \
+                -e PORT=3000 \
+                -e VK_SHARED_API_BASE=http://localhost:3000 \
                 -e RUST_LOG=debug \
                 -e DISABLE_WORKTREE_ORPHAN_CLEANUP=1 \
-                -e https_proxy=http://host.containers.internal:1080 \
-                -e http_proxy=http://host.containers.internal:1080 \
                 -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban:/app:rw \
                 -v ${HOME}/repos:/repos:ro \
                 -v /mnt/volume3/data/repos:/mnt/volume3/data/repos:rw \
@@ -106,7 +102,7 @@ dev-srv *args:
                 --workdir /app \
                 vibe-kanban:dev-runtime-v1.0.0
         fi
-        echo "✅ Backend dev container started on http://localhost:3001"
+        echo "✅ Backend dev container started on http://localhost:3000"
         echo "View logs: podman logs -f vibe-kanban-backend-dev"
     else
         echo "Starting backend development container in interactive mode..."
@@ -116,14 +112,12 @@ dev-srv *args:
                 --name vibe-kanban-backend-dev \
                 --replace \
                 --network vibe-kanban-dev \
-                -p 3001:3001 \
+                -p 3000:3000 \
                 -e HOST=0.0.0.0 \
-                -e PORT=3001 \
-                -e VK_SHARED_API_BASE=http://localhost:3001 \
+                -e PORT=3000 \
+                -e VK_SHARED_API_BASE=http://localhost:3000 \
                 -e RUST_LOG=debug \
                 -e DISABLE_WORKTREE_ORPHAN_CLEANUP=1 \
-                -e https_proxy=http://host.containers.internal:1080 \
-                -e http_proxy=http://host.containers.internal:1080 \
                 -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban:/app:rw \
                 -v ${HOME}/repos:/repos:ro \
                 -v /mnt/volume3/data/repos:/mnt/volume3/data/repos:rw \
@@ -137,14 +131,12 @@ dev-srv *args:
                 --name vibe-kanban-backend-dev \
                 --replace \
                 --network vibe-kanban-dev \
-                -p 3001:3001 \
+                -p 3000:3000 \
                 -e HOST=0.0.0.0 \
-                -e PORT=3001 \
-                -e VK_SHARED_API_BASE=http://localhost:3001 \
+                -e PORT=3000 \
+                -e VK_SHARED_API_BASE=http://localhost:3000 \
                 -e RUST_LOG=debug \
                 -e DISABLE_WORKTREE_ORPHAN_CLEANUP=1 \
-                -e https_proxy=http://host.containers.internal:1080 \
-                -e http_proxy=http://host.containers.internal:1080 \
                 -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban:/app:rw \
                 -v ${HOME}/repos:/repos:ro \
                 -v /mnt/volume3/data/repos:/mnt/volume3/data/repos:rw \
@@ -155,77 +147,19 @@ dev-srv *args:
         fi
     fi
 
-# 启动前端开发服务器 - 在容器内运行 (port 3000)
-# Usage: just dev-ui         # 开发模式 (npm run dev)
-#        just dev-ui --build  # 先 build 再启动 (生产模式)
+# [DEPRECATED] 前端开发服务器已合并到后端，使用 `just dev-srv` 启动统一服务
+# 前端代码修改后需要重新构建: (cd frontend && pnpm run build)
 dev-ui *args:
     #!/usr/bin/env bash
-    if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
-        echo "Error: Port 3000 is already in use"
-        exit 1
-    fi
-
-    # Check if base image exists
-    if ! podman images | grep -q "vibe-kanban.*dev-base-v1.0.0"; then
-        echo "Dev image not found, building..."
-        just dev-build-all
-    fi
-
-    # Create shared network if not exists
-    podman network create vibe-kanban-dev 2>/dev/null || true
-
-    # Check if build mode
-    if [[ "{{args}}" == *"--build"* ]]; then
-        # Check if dist exists and is not empty
-        if [ ! -d "/mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban/frontend/dist" ] || [ -z "$(ls -A /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban/frontend/dist 2>/dev/null)" ]; then
-            echo "Building frontend production bundle (dist not found or empty)..."
-            podman run --rm \
-                --network vibe-kanban-dev \
-                -e VITE_API_BASE_URL=http://vibe-kanban-backend-dev:3001 \
-                -e BACKEND_HOST=vibe-kanban-backend-dev \
-                -e https_proxy=http://host.containers.internal:1080 \
-                -e http_proxy=http://host.containers.internal:1080 \
-                -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban/frontend:/app/frontend:rw \
-                -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban/shared:/app/shared:rw \
-                --workdir /app/frontend \
-                node:20-alpine \
-                sh -c "npm config set proxy http://host.containers.internal:1080 && npm config set https-proxy http://host.containers.internal:1080 && npm install && VITE_VK_SHARED_API_BASE=http://vibe-kanban-backend-dev:3001 npm run build"
-        else
-            echo "Using existing frontend build in dist/"
-        fi
-
-        echo "Starting frontend production server..."
-        echo "Press Ctrl+C to stop"
-        podman run -ti \
-            --name vibe-kanban-frontend-dev \
-            --replace \
-            --network vibe-kanban-dev \
-            -p 3000:3000 \
-            -e VITE_API_BASE_URL=http://vibe-kanban-backend-dev:3001 \
-            -e BACKEND_HOST=vibe-kanban-backend-dev \
-            -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban/frontend:/app/frontend:ro \
-            -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban/shared:/app/shared:ro \
-            --workdir /app/frontend \
-            node:20-alpine \
-            sh -c "npm install -g serve && serve -s -L dist -l tcp://0.0.0.0:3000"
-    else
-        echo "Starting frontend development container..."
-        echo "Press Ctrl+C to stop"
-        podman run -ti \
-            --name vibe-kanban-frontend-dev \
-            --replace \
-            --network vibe-kanban-dev \
-            -p 3000:3000 \
-            -e VITE_API_BASE_URL=http://vibe-kanban-backend-dev:3001 \
-            -e BACKEND_HOST=vibe-kanban-backend-dev \
-            -e https_proxy=http://host.containers.internal:1080 \
-            -e http_proxy=http://host.containers.internal:1080 \
-            -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban/frontend:/app/frontend:rw \
-            -v /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban/shared:/app/shared:rw \
-            --workdir /app/frontend \
-            node:20-alpine \
-            sh -c "npm config set proxy http://host.containers.internal:1080 && npm config set https-proxy http://host.containers.internal:1080 && npm install && npm run dev -- --port 3000 --host 0.0.0.0"
-    fi
+    echo "⚠️  前端开发服务器已弃用"
+    echo ""
+    echo "新的开发流程:"
+    echo "  1. just dev-srv          # 启动后端 (端口 3000，包含嵌入的前端)"
+    echo "  2. (cd frontend && pnpm run dev)  # 如需热重载前端，单独运行"
+    echo ""
+    echo "或者直接使用 docker-compose:"
+    echo "  podman compose -f docker-compose.dev.yml up"
+    exit 0
 
 # 停止后端开发容器
 dev-srv-stop:
@@ -235,18 +169,14 @@ dev-srv-stop:
     podman rm vibe-kanban-backend-dev 2>/dev/null || true
     echo "✅ Backend dev container stopped"
 
-# 停止前端开发容器
+# [DEPRECATED] 前端开发容器已移除，使用 `just dev-srv-stop` 停止后端
 dev-ui-stop:
     #!/usr/bin/env bash
-    echo "Stopping frontend dev container..."
-    podman stop vibe-kanban-frontend-dev 2>/dev/null || true
-    podman rm vibe-kanban-frontend-dev 2>/dev/null || true
-    echo "✅ Frontend dev container stopped"
+    echo "⚠️  前端开发容器已弃用，使用 `just dev-srv-stop` 停止服务"
 
 # 停止所有开发容器
 dev-stop-all:
     just dev-srv-stop
-    just dev-ui-stop
 
 # ===========================================
 # BUILD & CHECK
@@ -285,16 +215,14 @@ generate-types:
 # LOCAL PRODUCTION DEPLOYMENT (Docker/Podman)
 # ===========================================
 
-# 构建生产容器镜像
+# 构建生产容器镜像 (单一后端镜像，包含嵌入的前端)
 container-build:
     #!/usr/bin/env bash
-    echo "Building frontend..."
+    echo "Building frontend for embedding..."
     (cd frontend && pnpm run build)
-    echo "Building Rust binary..."
-    cargo build --release --bin server
-    echo "Building Podman image..."
-    podman build -f Dockerfile.local -t vibe-kanban:local .
-    echo "✅ Build complete: vibe-kanban:local"
+    echo "Building unified container image (backend + embedded frontend)..."
+    podman build -f Dockerfile.backend -t vibe-kanban:local .
+    echo "✅ Build complete: vibe-kanban:local (backend with embedded frontend)"
 
 # 启动生产容器
 up:
