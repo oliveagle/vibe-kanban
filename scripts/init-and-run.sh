@@ -1,17 +1,17 @@
 #!/bin/bash
-# Initialize and run VK backend server inside container
 
 set -e
 
-# Configure subuid/subgid for rootless podman
-echo "Configuring subuid/subgid..."
 echo 'root:100000:65536' > /etc/subuid
 echo 'root:100000:65536' > /etc/subgid
 
-# Create opencode config
-echo "Creating opencode config..."
-mkdir -p /root/.config/opencode
-cat > /root/.config/opencode/opencode.json << 'EOF'
+VK_DATA_DIR="/root/.local/share/vibe-kanban"
+OPENCODE_CONFIG_FILE="$VK_DATA_DIR/opencode.json"
+
+if [ ! -f "$OPENCODE_CONFIG_FILE" ]; then
+  echo "Creating default opencode config..."
+  mkdir -p "$VK_DATA_DIR"
+  cat > "$OPENCODE_CONFIG_FILE" << 'EOF'
 {
   "$schema": "https://opencode.ai/config.json",
   "model": "kimi-for-coding",
@@ -28,10 +28,14 @@ cat > /root/.config/opencode/opencode.json << 'EOF'
   }
 }
 EOF
+fi
 
-# Navigate to project
+if [ ! -L /root/.config/opencode ]; then
+  mkdir -p /root/.config
+  ln -sf "$VK_DATA_DIR" /root/.config/opencode
+fi
+
 cd /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban
 
-# Run server
 echo "Starting VK backend server..."
 exec cargo run --release --bin server

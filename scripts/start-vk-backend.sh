@@ -1,26 +1,23 @@
 #!/bin/bash
-# VK Backend Container Startup Script
-# Usage: ./start-vk-backend.sh [-d|--daemon]
 
 set -e
 
-# Parse arguments
 DAEMON_MODE=false
 if [[ "$1" == "-d" || "$1" == "--daemon" ]]; then
     DAEMON_MODE=true
 fi
 
-# Container configuration
 CONTAINER_NAME="vibe-kanban-backend-dev"
 IMAGE="localhost/vibe-kanban:dev-runtime-v0.0.147"
 PORT="3000"
 
-# Stop existing container if running
+VK_DATA_DIR="$HOME/.local/share/vibe-kanban"
+mkdir -p "$VK_DATA_DIR"
+
 echo "Stopping existing container..."
 podman stop "$CONTAINER_NAME" 2>/dev/null || true
 podman rm "$CONTAINER_NAME" 2>/dev/null || true
 
-# Start container
 echo "Starting VK backend container..."
 
 if [ "$DAEMON_MODE" = true ]; then
@@ -36,9 +33,10 @@ if [ "$DAEMON_MODE" = true ]; then
         -e DISABLE_WORKTREE_ORPHAN_CLEANUP=1 \
         -v /mnt/volume3/data:/mnt/volume3/data:rw \
         -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
+        -v "$VK_DATA_DIR":/root/.local/share/vibe-kanban:rw \
         "$IMAGE" \
         /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban/scripts/init-and-run.sh
-    
+
     echo "✅ Container started in background"
     echo "View logs: podman logs -f $CONTAINER_NAME"
     echo "API: http://localhost:${PORT}"
@@ -55,6 +53,7 @@ else
         -e DISABLE_WORKTREE_ORPHAN_CLEANUP=1 \
         -v /mnt/volume3/data:/mnt/volume3/data:rw \
         -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
+        -v "$VK_DATA_DIR":/root/.local/share/vibe-kanban:rw \
         "$IMAGE" \
         /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban/scripts/init-and-run.sh
 fi

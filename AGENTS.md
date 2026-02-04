@@ -114,6 +114,64 @@ podman exec vibe-kanban-backend touch /root/.config/opencode/opencode.json
 podman restart vibe-kanban-backend
 ```
 
+### Data Persistence in Containers
+
+Containers mount host directories for persistence. This applies to both development (`just dev-srv`) and production deployments:
+
+**Mounted Volumes:**
+- `$HOME/.local/share/vibe-kanban/` → `/root/.local/share/vibe-kanban/` (data directory)
+- `/mnt/volume3/data` → `/mnt/volume3/data` (repositories)
+- `/run/user/1000/podman/podman.sock` → `/var/run/docker.sock` (container socket)
+
+**⚠️ SYMLINK RESTRICTION:**
+Files or directories in `$HOME/.local/share/vibe-kanban/` that are symlinks pointing **outside** this directory will **NOT work** inside the container. The container can only access paths within the mounted volume.
+
+**Check for problematic symlinks:**
+```bash
+./scripts/check-data-symlinks.sh
+```
+
+**Fix problematic symlinks:**
+```bash
+# Replace symlink with actual file
+cp $(readlink symlink_name) symlink_name
+
+# Or copy directory content
+cp -rL $(readlink dir_name) dir_name
+```
+
+### Default Configuration
+
+**Default Agent:** `opencode`
+- Model: `kimi-for-coding`
+- MCP: vibe_kanban server configured automatically
+- Config location: `/root/.config/opencode/opencode.json`
+
+**Default Editor:** `nvim` (Neovim)
+- Installed in dev-runtime image
+- Available at: `/usr/bin/nvim`
+- Fallback: `vim` or `vi`
+
+**⚠️ CRITICAL:** All tools (opencode, nvim, etc.) **MUST** be installed in the **Dockerfile** during image build, NOT at runtime. 
+
+**Why?** Containers are ephemeral - any changes made at runtime (e.g., `apt-get install` inside a running container) will be **LOST** when the container restarts. Only changes in the Dockerfile are persisted in the image.
+
+**Correct way to add tools:**
+1. Edit `Dockerfile.dev` to add the tool installation
+2. Rebuild the image: `just dev-build-all` or `podman build -f Dockerfile.dev ...`
+3. Restart the container with the new image
+
+**Current tools installed in Dockerfile.dev:**
+- `opencode` - via `npm install -g opencode-ai`
+- `nvim` - via `apt-get install neovim`
+- `podman` - via `apt-get install podman`
+- `mcp_task_server` - built from source during image build
+
+To use these defaults, ensure:
+1. Container is started with proper volume mounts (see Container-Based Development below)
+2. opencode.json is created with MCP configuration
+3. Tools are installed in Dockerfile (see Dockerfile.dev)
+
 **Container Network Setup:**
 - When using podman-compose, containers may not resolve each other by service name.
 - Frontend nginx must proxy to `host.containers.internal:37825` (host port) instead of `backend:3000`.
