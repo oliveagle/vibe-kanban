@@ -17,6 +17,30 @@ ts-rs allows you to derive TypeScript types from Rust structs/enums. By annotati
 When making changes to the types, you can regenerate them using `pnpm run generate-types`
 Do not manually edit shared/types.ts, instead edit crates/server/src/bin/generate_types.rs
 
+## Version Management (CRITICAL)
+
+**ALL version numbers must be updated together to prevent pollution:**
+
+When making any changes that affect:
+- Dockerfile (base image changes)
+- Cargo.toml dependencies
+- API changes
+- Container orchestration
+
+**You MUST bump the version number in ALL of these files:**
+1. All `crates/*/Cargo.toml` files (9 crates)
+2. `package.json` (root)
+3. `frontend/package.json`
+4. `npx-cli/package.json`
+5. `justfile` (image version tags)
+
+**Current version:** `0.0.147`
+**Image tags:** `vibe-kanban:dev-base-v0.0.147`, `vibe-kanban:dev-runtime-v0.0.147`
+
+**Release tagging:**
+- `release-version` tag always points to current stable release
+- Version tags: `v0.0.147`, `v0.0.148`, etc.
+
 ## Build, Test, and Development Commands
 - Install: `pnpm i`
 - Run dev (frontend + backend with ports auto-assigned): `pnpm run dev`
@@ -246,36 +270,41 @@ const { chromium } = require('playwright');
 
 ## Container-Based Development Environment
 
-### Architecture
+### Architecture (v0.0.146+)
 
-For container-based development, both frontend (`dev-ui`) and backend (`dev-srv`) run in separate containers on a shared Podman network:
+For container-based development, a single backend container serves both API and frontend (embedded via rust_embed):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Host Machine                             │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │              vibe-kanban-dev Network                    │   │
-│  │  ┌──────────────────┐      ┌──────────────────────┐  │   │
-│  │  │ Frontend Container│──────│  Backend Container    │  │   │
-│  │  │   (dev-ui)        │      │    (dev-srv)          │  │   │
-│  │  │   Port: 3000        │      │    Port: 3001        │  │   │
-│  │  │   Image: node:20    │      │    Image: dev-runtime│  │   │
-│  │  └──────────────────┘      └──────────────────────┘  │   │
+│  │  ┌──────────────────────────────────────────────────┐  │   │
+│  │  │         Unified Backend Container                 │  │   │
+│  │  │                                                   │  │   │
+│  │  │  ┌─────────────┐      ┌──────────────────────┐  │  │   │
+│  │  │  │   Frontend  │      │   Backend API        │  │  │   │
+│  │  │  │   (embedded)│      │   Port: 3000         │  │  │   │
+│  │  │  └─────────────┘      └──────────────────────┘  │  │   │
+│  │  │                                                   │  │   │
+│  │  │  Image: vibe-kanban:dev-runtime-v0.0.146         │  │   │
+│  │  └──────────────────────────────────────────────────┘  │   │
 │  └─────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+**Note:** As of v0.0.146, the separate frontend container has been removed. The backend serves the frontend via rust_embed on the same port (3000).
+
 ### Container Network Configuration
 
-Both containers join the shared network `vibe-kanban-dev`:
+The backend container joins the shared network `vibe-kanban-dev`:
 
 ```bash
 # Create network (if not exists)
 podman network create vibe-kanban-dev
 
-# Frontend connects to backend via container name:
-# BACKEND_HOST=vibe-kanban-backend-dev
-# BACKEND_PORT=3001
+# Access the unified service:
+# http://localhost:3000 (both frontend and API)
 ```
 
 ### Required Volume Mounts
@@ -286,16 +315,11 @@ podman network create vibe-kanban-dev
 - `/var/tmp`: Read-write for workspace/worktree storage
 - `/run/user/1000/podman/podman.sock` (optional): Docker/Podman socket for container orchestration
 
-**Frontend Container (`dev-ui`):**
-- `/app/frontend`: Read-write for hot-reload (dev mode) or read-only (production mode)
-- `/app/shared`: Read-only for shared TypeScript types
-
 ### Port Mappings
 
-- **Frontend**: Host port 3000 → Container port 3000
-- **Backend**: Host port 3001 → Container port 3001
+- **Unified Service**: Host port 3000 → Container port 3000 (serves both frontend and API)
 
-Both ports should be accessible from external machines if needed.
+The port should be accessible from external machines if needed.
 
 ### Development Commands
 
@@ -303,15 +327,11 @@ Both ports should be accessible from external machines if needed.
 # Build development images (first time only)
 just dev-build-all
 
-# Start backend in container (background)
+# Start unified backend container (serves both API and frontend)
 just dev-srv -d
 
-# Start frontend in container (production build mode)
-just dev-ui --build
-
-# Stop all dev containers
+# Stop dev container
 just dev-srv-stop
-just dev-ui-stop
 ```
 
 ### Frontend Build Optimization
@@ -331,11 +351,11 @@ Routes are lazy-loaded using `React.lazy()` for better initial load performance.
 WebSocket connections from browser → backend flow:
 
 ```
-Browser → Frontend Container (3000) → Backend Container (3001)
-        (HTTP/WS proxy)              (via shared network)
+Browser → Backend Container (3000)
+        (HTTP/WS on same origin)
 ```
 
-**Important:** The backend WebSocket endpoint must be hardcoded or properly configured to use the backend container's address, not `window.location.host`.
+**Note:** As of v0.0.146, WebSocket uses the same origin as the frontend (port 3000). No cross-container communication needed.
 
 ## Container Network Proxy Setup
 
@@ -350,13 +370,13 @@ When running containers that need internet access (e.g., for downloading depende
 podman run -d \
   --name vibe-kanban-backend-dev \
   --user root \
-  -p 3001:3001 \
+  -p 3000:3000 \
   -e https_proxy=http://host.containers.internal:1080 \
   -e http_proxy=http://host.containers.internal:1080 \
   -v /path/to/vibe-kanban:/app:rw \
   -v /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro \
   --workdir /app \
-  localhost/vibe-kanban:dev-runtime-v1.0.0 \
+  localhost/vibe-kanban:dev-runtime-v0.0.146 \
   sh -c "sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
          sed -i 's/security.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
          apt-get update && \

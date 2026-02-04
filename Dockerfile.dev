@@ -2,16 +2,16 @@
 # Vibe-Kanban Development Environment
 # ============================================
 #
-# Layer 1: Base - Rust + system dependencies (tag: dev-base-v1.0.0)
-# Layer 2: Runtime - mount local code (tag: dev-runtime-v1.0.0)
+# Layer 1: Base - Rust + system dependencies (tag: dev-base-v0.0.146)
+# Layer 2: Runtime - mount local code (tag: dev-runtime-v0.0.146)
 #
 # Usage:
 #   # Build all layers (first time only)
 #   just dev-build-all
 #
 #   # Or build specific layer
-#   podman build -f Dockerfile.dev --target base --build-arg USE_MIRROR=true -t vibe-kanban:dev-base-v1.0.0 .
-#   podman build -f Dockerfile.dev --target dev-runtime --build-arg USE_MIRROR=true -t vibe-kanban:dev-runtime-v1.0.0 .
+#   podman build -f Dockerfile.dev --target base --build-arg USE_MIRROR=true -t vibe-kanban:dev-base-v0.0.146 .
+#   podman build -f Dockerfile.dev --target dev-runtime --build-arg USE_MIRROR=true -t vibe-kanban:dev-runtime-v0.0.146 .
 #
 #   # Run with pre-built image
 #   just dev-srv
@@ -44,6 +44,9 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     ca-certificates \
+    podman \
+    slirp4netns \
+    uidmap \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20.x and npm/npx
