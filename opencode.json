@@ -1,4 +1,13 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "kimi-for-coding"
+  "model": "kimi-for-coding",
+  "mcp": {
+    "vibe_kanban": {
+      "command": "/usr/local/bin/mcp_task_server",
+      "args": [],
+      "env": {
+        "VIBE_BACKEND_URL": "http://localhost:3000"
+      }
+    }
+  }
 }

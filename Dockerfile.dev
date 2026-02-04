@@ -67,6 +67,15 @@ RUN mkdir -p /opt/agents && cd /opt/agents && \
 RUN npm install -g opencode-ai && \
     ln -s $(which opencode) /usr/local/bin/opencode || true
 
+# Build MCP task server binary during image build
+# Copy source code temporarily to build the binary
+COPY . /tmp/build
+WORKDIR /tmp/build
+RUN cargo build --release --bin mcp_task_server && \
+    cp target/release/mcp_task_server /usr/local/bin/mcp_task_server && \
+    chmod +x /usr/local/bin/mcp_task_server && \
+    rm -rf /tmp/build
+
 WORKDIR /app
 
 # ============================================
@@ -78,6 +87,7 @@ ENV HOST=0.0.0.0
 ENV PORT=3001
 ENV RUST_LOG=debug
 ENV DISABLE_WORKTREE_ORPHAN_CLEANUP=1
+ENV VIBE_BACKEND_URL=http://localhost:3000
 
 # Configure cargo to use proxy for crate downloads (host proxy at port 1080)
 # Note: This is separate from system proxy to avoid breaking Node.js fetch
