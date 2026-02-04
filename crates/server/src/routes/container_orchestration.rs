@@ -281,7 +281,7 @@ pub async fn test_nginx(
             "run", "-d",
             "--name", &container_name,
             "-p", &format!("{}:80", host_port),
-            "nginx:alpine"
+            "docker.io/library/nginx:1.25.3-alpine"
         ])
         .output()
         .await
