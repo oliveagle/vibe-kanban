@@ -57,25 +57,30 @@ When making any changes that affect:
 
 **Build dev images:**
 
-The development environment uses a two-layer architecture:
+The development environment uses a two-layer architecture with **fail-fast** strategy:
 
-1. **dev-base** (Layer 1): Rust toolchain + system dependencies
+1. **base** (Layer 1): Rust toolchain + system dependencies
    - Pre-built by GitHub Actions and published to GHCR
-   - `just dev-build-all` will automatically pull this image
-   - Only rebuild locally if you need custom changes: `just dev-build-base`
+   - `just dev-build-all` pulls this image - **fails fast if unavailable**
+   - No automatic fallback to local build (to catch issues early)
 
 2. **dev-runtime** (Layer 2): Development runtime configuration
-   - Built locally on top of dev-base
+   - Built locally on top of base
    - Fast to build (~1-2 minutes)
 
 ```bash
-just dev-build-all        # Pull dev-base from GHCR, build dev-runtime locally
-just dev-build-base       # Build dev-base locally (slow, needs good network)
+just dev-build-all        # Pull base from GHCR, build dev-runtime locally
+just dev-build-base       # Build base locally (slow, only if GHCR fails)
 ```
 
+**Fail Fast Principle:**
+- `just dev-build-all` fails immediately if GHCR pull fails
+- No hidden fallbacks - explicit error with clear next steps
+- Forces quick detection of network/auth issues
+
 **Image Sources:**
-- **GitHub Container Registry** (recommended): `ghcr.io/oliveagle/vibe-kanban/dev-base:v{version}`
-- **Local build** (fallback): Build from Dockerfile.dev with official sources
+- **GitHub Container Registry** (recommended): `ghcr.io/oliveagle/vibe-kanban/base:v{version}`
+- **Local build** (manual fallback): `just dev-build-base` with official sources
 
 **Start backend in container:**
 ```bash

@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     ca-certificates \
+    xz-utils \
     podman \
     slirp4netns \
     uidmap \
@@ -44,7 +45,7 @@ RUN apt-get update && apt-get install -y \
 
 # Install Node.js 20.x
 RUN if [ "$USE_MIRROR" = "true" ]; then \
-        curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/v20.20.0/node-v20.20.0-linux-x64.tar.xz | tar -xJf - -C /usr/local --strip-components=1; \
+        curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/v20.18.2/node-v20.18.2-linux-x64.tar.xz | tar -xJf - -C /usr/local --strip-components=1; \
     else \
         curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
         && apt-get install -y nodejs; \

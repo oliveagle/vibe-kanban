@@ -1,0 +1,27 @@
+# Development Runtime Dockerfile
+# Uses pre-built base image from GHCR
+
+ARG BASE_IMAGE=ghcr.io/oliveagle/vibe-kanban/base:v0.0.147
+FROM ${BASE_IMAGE} AS dev-runtime
+
+ENV HOST=0.0.0.0
+ENV PORT=3001
+ENV RUST_LOG=debug
+ENV DISABLE_WORKTREE_ORPHAN_CLEANUP=1
+ENV VIBE_BACKEND_URL=http://localhost:3000
+
+# Configure cargo to use proxy for crate downloads
+RUN mkdir -p /usr/local/cargo && \
+    echo '[http]' > /usr/local/cargo/config.toml && \
+    echo 'proxy = "http://host.containers.internal:1080"' >> /usr/local/cargo/config.toml && \
+    echo '' >> /usr/local/cargo/config.toml && \
+    echo '[https]' >> /usr/local/cargo/config.toml && \
+    echo 'proxy = "http://host.containers.internal:1080"' >> /usr/local/cargo/config.toml
+
+EXPOSE 3001
+
+VOLUME ["/app"]
+
+WORKDIR /app
+
+CMD ["sh", "-c", "cargo install cargo-watch && cargo watch -w crates -x 'run --bin server'"]
