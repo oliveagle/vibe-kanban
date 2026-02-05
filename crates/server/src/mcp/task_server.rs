@@ -251,6 +251,18 @@ pub struct GetTaskResponse {
     pub task: TaskDetails,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PullImageRequest {
+    #[schemars(description = "Docker image name to pull, e.g., 'nginx:alpine' or 'docker.io/library/nginx:1.25.3-alpine'")]
+    pub image: String,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct PullImageResponse {
+    pub success: bool,
+    pub message: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct TaskServer {
     client: reqwest::Client,
@@ -808,15 +820,63 @@ impl TaskServer {
 
         TaskServer::success(&response)
     }
+
+    #[tool(
+        description = "Pull a Docker image from registry. \
+        CRITICAL: ALWAYS use this tool instead of 'podman pull' or 'docker pull' commands. \
+        This tool uses Vibe Kanban's configured proxy settings to solve network connectivity issues. \
+        Direct podman pull may fail due to network restrictions, but this tool will work."
+    )]
+    async fn pull_image(
+        &self,
+        Parameters(PullImageRequest { image }): Parameters<PullImageRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let url = self.url("/api/orchestration/images/pull");
+        let body = serde_json::json!({ "image": image });
+        
+        let result: String = match self.send_json(self.client.post(&url).json(&body)).await {
+            Ok(r) => r,
+            Err(e) => return Ok(e),
+        };
+
+        let response = PullImageResponse {
+            success: true,
+            message: result,
+        };
+
+        TaskServer::success(&response)
+    }
 }
 
 #[tool_handler]
 impl ServerHandler for TaskServer {
     fn get_info(&self) -> ServerInfo {
-        let mut instruction = "A task and project management server. If you need to create or update tickets or tasks then use these tools. Most of them absolutely require that you pass the `project_id` of the project that you are currently working on. You can get project ids by using `list projects`. Call `list_tasks` to fetch the `task_ids` of all the tasks in a project`.. TOOLS: 'list_projects', 'list_tasks', 'create_task', 'start_workspace_session', 'get_task', 'update_task', 'delete_task', 'list_repos'. Make sure to pass `project_id` or `task_id` where required. You can use list tools to get the available ids.".to_string();
+        let mut instruction = "Vibe Kanban MCP Server - Task and Container Image Management.
+
+For task management, use the task-related tools with proper project_id and task_id.
+
+CRITICAL - IMAGE PULLING:
+When you need to pull Docker images (e.g., nginx, alpine, etc.), ALWAYS use 'pull_image' tool.
+DO NOT use 'podman pull' or 'docker pull' commands directly - they will fail due to network restrictions.
+The 'pull_image' tool uses Vibe Kanban's proxy configuration and will work reliably.
+
+TASK MANAGEMENT TOOLS:
+- list_projects: Get available projects
+- list_tasks: Get tasks in a project (requires project_id)
+- create_task: Create new task (requires project_id)
+- get_task: Get task details (requires task_id)
+- update_task: Update task (requires task_id)
+- delete_task: Delete task (requires task_id)
+- start_workspace_session: Start working on a task
+- list_repos: List repositories in a project
+
+CONTAINER IMAGE TOOL:
+- pull_image: Pull Docker images with proxy support (USE THIS instead of podman pull)
+
+Always pass required IDs (project_id, task_id) when specified.".to_string();
+
         if self.context.is_some() {
-            let context_instruction = "Use 'get_context' to fetch project/task/workspace metadata for the active Vibe Kanban workspace session when available.";
-            instruction = format!("{} {}", context_instruction, instruction);
+            instruction.push_str("\n\nUse 'get_context' to fetch project/task/workspace metadata for the active Vibe Kanban workspace session.");
         }
 
         ServerInfo {

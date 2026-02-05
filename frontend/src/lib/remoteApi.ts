@@ -1,7 +1,10 @@
 import { oauthApi, ApiError } from './api';
 import { UserData, AssigneesQuery } from 'shared/types';
 
-export const REMOTE_API_URL = import.meta.env.VITE_VK_SHARED_API_BASE || '';
+// Backend URL is empty because frontend is served by the backend on the same origin
+const BACKEND_URL = '';
+
+export const REMOTE_API_URL = BACKEND_URL;
 
 const makeRequest = async (path: string, options: RequestInit = {}) => {
   const tokenRes = await oauthApi.getToken();
@@ -27,6 +30,9 @@ const makeRequest = async (path: string, options: RequestInit = {}) => {
 export const getSharedTaskAssignees = async (
   projectId: string
 ): Promise<UserData[]> => {
+  if (!projectId || projectId === 'undefined') {
+    throw new Error('Project ID is required');
+  }
   const response = await makeRequest(
     `/v1/tasks/assignees?${new URLSearchParams({
       project_id: projectId,

@@ -1,11 +1,10 @@
 {
   "vibe_kanban": {
-    "command": "npx",
-    "args": [
-      "-y",
-      "vibe-kanban@latest",
-      "--mcp"
-    ]
+    "command": "/usr/local/bin/mcp_task_server",
+    "args": [],
+    "env": {
+      "VIBE_BACKEND_URL": "http://localhost:3000"
+    }
   },
   "context7": {
     "type": "http",

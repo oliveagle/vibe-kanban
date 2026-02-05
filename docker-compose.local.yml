@@ -1,17 +1,16 @@
 services:
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.local.backend
-    image: vibe-kanban:local-backend
-    container_name: vibe-kanban-backend
+  vibe-kanban:
+    # 生产镜像必须从 GHCR 拉取，不允许本地构建
+    # 使用 just prod-pull 拉取镜像后再启动
+    image: vibe-kanban:local
+    container_name: vibe-kanban
     user: "0:0"
     ports:
       - "0.0.0.0:37825:3000"
     environment:
       - HOST=0.0.0.0
       - PORT=3000
-      - VK_SHARED_API_BASE=http://backend:3000
+      - VK_SHARED_API_BASE=http://localhost:37825
     volumes:
       - ${HOME}/repos:/repos:ro
       - ${HOME}/data:/app/data:rw
@@ -26,23 +25,8 @@ services:
       - opencode-commands:/root/.config/opencode/commands
       - opencode-cache:/root/.cache/opencode
       - backend-persistent:/root/.persistent
+      - /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro
     restart: unless-stopped
-    networks:
-      - vibe-kanban-net
-
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.local.frontend
-    image: vibe-kanban:local-frontend
-    container_name: vibe-kanban-frontend
-    ports:
-      - "0.0.0.0:37826:80"
-    restart: unless-stopped
-    depends_on:
-      - backend
-    networks:
-      - vibe-kanban-net
 
 volumes:
   backend-data:
@@ -53,7 +37,3 @@ volumes:
   opencode-todos:
   opencode-skills:
   opencode-commands:
-
-networks:
-  vibe-kanban-net:
-    driver: bridge

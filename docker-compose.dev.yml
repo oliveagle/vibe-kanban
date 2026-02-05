@@ -1,0 +1,45 @@
+services:
+  backend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    image: vibe-kanban:dev-backend
+    container_name: vibe-kanban-backend-dev
+    user: "0:0"
+    ports:
+      - "0.0.0.0:3000:3000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3000
+      - VK_SHARED_API_BASE=http://localhost:3000
+      - RUST_LOG=debug
+      - DISABLE_WORKTREE_ORPHAN_CLEANUP=1
+    volumes:
+      - .:/app:rw
+      - ${HOME}/repos:/repos:ro
+      - ${HOME}/data:/app/data:rw
+      - ${HOME}/workspace:/workspace:ro
+      - ${HOME}/.claude:/root/.claude:ro
+      - backend-data-dev:/root/.local/share/vibe-kanban
+      - backend-cache-dev:/root/.cache/vibe-kanban
+      - ${HOME}/.config/opencode/opencode.json:/root/.config/opencode/opencode.json:ro
+      - opencode-transcripts-dev:/root/.config/opencode/transcripts
+      - opencode-todos-dev:/root/.config/opencode/todos
+      - opencode-skills-dev:/root/.config/opencode/skills
+      - opencode-commands-dev:/root/.config/opencode/commands
+      - opencode-cache-dev:/root/.cache/opencode
+      - backend-persistent-dev:/root/.persistent
+      - /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro
+    working_dir: /app
+    command: ["cargo", "watch", "-w", "crates", "-x", "run --bin server"]
+    restart: unless-stopped
+
+volumes:
+  backend-data-dev:
+  backend-cache-dev:
+  backend-persistent-dev:
+  opencode-cache-dev:
+  opencode-transcripts-dev:
+  opencode-todos-dev:
+  opencode-skills-dev:
+  opencode-commands-dev:

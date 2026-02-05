@@ -110,6 +110,9 @@ export class ApiError<E = unknown> extends Error {
   }
 }
 
+// API_BASE_URL is empty because frontend is served by the backend on the same origin
+const API_BASE_URL = '';
+
 const makeRequest = async (url: string, options: RequestInit = {}) => {
   const headers = new Headers(options.headers ?? {});
   if (!headers.has('Content-Type')) {
@@ -122,7 +125,8 @@ const makeRequest = async (url: string, options: RequestInit = {}) => {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  return fetch(url, {
+  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
+  return fetch(fullUrl, {
     ...options,
     headers,
   });

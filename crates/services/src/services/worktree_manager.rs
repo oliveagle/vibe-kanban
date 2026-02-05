@@ -126,11 +126,29 @@ impl WorktreeManager {
         let path_str = worktree_path.to_string_lossy().to_string();
         let branch_name_owned = branch_name.to_string();
         let worktree_path_owned = worktree_path.to_path_buf();
+        let repo_path_owned = repo_path.to_path_buf();
 
         info!(
             "Creating worktree {} at path {}",
             branch_name_owned, path_str
         );
+
+        let branch_name_for_create = branch_name_owned.clone();
+        tokio::task::spawn_blocking(move || -> Result<(), WorktreeError> {
+            let repo = Repository::open(&repo_path_owned).map_err(WorktreeError::Git)?;
+            let branch_exists = repo.find_branch(&branch_name_for_create, git2::BranchType::Local).is_ok()
+                || repo.find_branch(&branch_name_for_create, git2::BranchType::Remote).is_ok();
+            if !branch_exists {
+                info!("Branch {} does not exist, creating from HEAD", branch_name_for_create);
+                let head_ref = repo.head().map_err(WorktreeError::Git)?;
+                let head_commit = head_ref.peel_to_commit().map_err(WorktreeError::Git)?;
+                repo.branch(&branch_name_for_create, &head_commit, false)
+                    .map_err(WorktreeError::Git)?;
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| WorktreeError::TaskJoin(format!("Task join error: {e}")))??;
 
         // Step 1: Comprehensive cleanup of existing worktree and metadata (non-blocking)
         Self::comprehensive_worktree_cleanup_async(repo_path, &worktree_path_owned).await?;

@@ -2,6 +2,9 @@ import { useEffect, useState, useRef } from 'react';
 import { applyPatch } from 'rfc6902';
 import type { Operation } from 'rfc6902';
 
+// Backend URL is empty because frontend is served by the backend on the same origin
+const BACKEND_URL: string = '';
+
 type WsJsonPatchMsg = { JsonPatch: Operation[] };
 type WsFinishedMsg = { finished: boolean };
 type WsMsg = WsJsonPatchMsg | WsFinishedMsg;
@@ -91,12 +94,12 @@ export const useJsonPatchWsStream = <T extends object>(
       // Reset finished flag for new connection
       finishedRef.current = false;
 
-      // Build WebSocket endpoint
       let wsEndpoint: string;
       if (endpoint.startsWith('/')) {
-        // Relative path - build absolute URL
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        wsEndpoint = `${protocol}//${window.location.host}${endpoint}`;
+        // Use window.location.host when BACKEND_URL is empty (same-origin deployment)
+        const host = BACKEND_URL ? BACKEND_URL.replace(/^https?:\/\//, '') : window.location.host;
+        wsEndpoint = `${protocol}//${host}${endpoint}`;
       } else if (endpoint.startsWith('http')) {
         // HTTP(S) URL - convert to WS(S)
         wsEndpoint = endpoint.replace(/^http/, 'ws');

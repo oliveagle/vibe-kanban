@@ -1,82 +1,140 @@
-# Build stage
-FROM node:24-alpine AS builder
+# ============================================
+# Vibe-Kanban Production & Development Base Image
+# ============================================
+# This base image is shared between production and development
+# Contains all common tools: Rust, Node.js, podman, neovim, opencode
+#
+# Usage:
+#   Local build: podman build -f Dockerfile --target base -t vibe-kanban:base .
+#   GitHub Actions: Uses pre-built ghcr.io/oliveagle/vibe-kanban/base:v{version}
+#
+# Version History:
+#   v0.0.147 - Unified base image for prod and dev
 
-# Install build dependencies
-RUN apk add --no-cache \
+# ============================================
+# Arguments
+# ============================================
+ARG BASE_IMAGE=rust:1.80-slim-bookworm
+
+# ============================================
+# Base Image (Shared)
+# ============================================
+FROM ${BASE_IMAGE} AS base
+
+ARG USE_MIRROR=false
+
+# Configure apt source (mirror for dev, official for prod)
+RUN if [ "$USE_MIRROR" = "true" ]; then \
+        rm -f /etc/apt/sources.list.d/*.sources && \
+        echo 'deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib non-free non-free-firmware' > /etc/apt/sources.list && \
+        echo 'deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main contrib non-free non-free-firmware' >> /etc/apt/sources.list && \
+        echo 'deb http://mirrors.tuna.tsinghua.edu.cn/debian-security/ bookworm-security main contrib non-free non-free-firmware' >> /etc/apt/sources.list; \
+    fi
+
+# Install system dependencies (cached layer)
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    libsqlite3-dev \
+    libclang-dev \
+    clang \
+    git \
     curl \
-    build-base \
-    perl \
-    llvm-dev \
-    clang-dev
+    ca-certificates \
+    xz-utils \
+    podman \
+    slirp4netns \
+    uidmap \
+    neovim \
+    && rm -rf /var/lib/apt/lists/*
 
-# Allow linking libclang on musl
-ENV RUSTFLAGS="-C target-feature=-crt-static"
+# Install Node.js 20.x
+RUN if [ "$USE_MIRROR" = "true" ]; then \
+        curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/v20.18.2/node-v20.18.2-linux-x64.tar.xz | tar -xJf - -C /usr/local --strip-components=1; \
+    else \
+        curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+        && apt-get install -y nodejs; \
+    fi \
+    && npm install -g npm@latest pnpm \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
+# Configure npm registry (mirror for dev)
+RUN if [ "$USE_MIRROR" = "true" ]; then \
+        npm config set registry https://registry.npmmirror.com; \
+    fi
+
+# Install Rust nightly toolchain
+RUN rustup toolchain install nightly-2025-12-04 --component rustfmt,rustc,rust-analyzer,rust-src,rust-std,cargo
+
+# Install opencode globally
+RUN npm install -g opencode-ai && \
+    ln -s $(which opencode) /usr/local/bin/opencode || true
+
+# Build MCP task server
+COPY . /tmp/build
+WORKDIR /tmp/build
+RUN cargo fetch && \
+    cargo build --release --bin mcp_task_server && \
+    cp target/release/mcp_task_server /usr/local/bin/mcp_task_server && \
+    chmod +x /usr/local/bin/mcp_task_server && \
+    rm -rf /tmp/build
+
+WORKDIR /app
+
+# ============================================
+# Production Runtime
+# ============================================
+FROM base AS prod-runtime
 
 ARG POSTHOG_API_KEY
 ARG POSTHOG_API_ENDPOINT
 
 ENV VITE_PUBLIC_POSTHOG_KEY=$POSTHOG_API_KEY
 ENV VITE_PUBLIC_POSTHOG_HOST=$POSTHOG_API_ENDPOINT
-
-# Set working directory
-WORKDIR /app
-
-# Copy package files for dependency caching
-COPY package*.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY frontend/package*.json ./frontend/
-COPY npx-cli/package*.json ./npx-cli/
-
-# Install pnpm and dependencies
-RUN npm install -g pnpm && pnpm install
-
-# Copy source code
-COPY . .
-
-# Build application
-RUN npm run generate-types
-RUN cd frontend && pnpm run build
-RUN cargo build --release --bin server
-
-# Runtime stage
-FROM alpine:latest AS runtime
-
-# Install runtime dependencies
-RUN apk add --no-cache \
-    ca-certificates \
-    tini \
-    libgcc \
-    wget
-
-# Create app user for security
-RUN addgroup -g 1001 -S appgroup && \
-    adduser -u 1001 -S appuser -G appgroup
-
-# Copy binary from builder
-COPY --from=builder /app/target/release/server /usr/local/bin/server
-
-# Create repos directory and set permissions
-RUN mkdir -p /repos && \
-    chown -R appuser:appgroup /repos
-
-# Switch to non-root user
-USER appuser
-
-# Set runtime environment
 ENV HOST=0.0.0.0
 ENV PORT=3000
+
+# Copy source code
+WORKDIR /app
+COPY . .
+
+# Build frontend
+RUN npm run generate-types && \
+    cd frontend && pnpm install && pnpm run build
+
+# Build backend
+RUN cargo build --release --bin server
+
+# Create repos directory
+RUN mkdir -p /repos
+
 EXPOSE 3000
 
-# Set working directory
-WORKDIR /repos
+CMD ["cargo", "run", "--release", "--bin", "server"]
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider "http://${HOST:-localhost}:${PORT:-3000}" || exit 1
+# ============================================
+# Development Runtime
+# ============================================
+FROM base AS dev-runtime
 
-# Run the application
-ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["server"]
+ENV HOST=0.0.0.0
+ENV PORT=3001
+ENV RUST_LOG=debug
+ENV DISABLE_WORKTREE_ORPHAN_CLEANUP=1
+ENV VIBE_BACKEND_URL=http://localhost:3000
+
+# Configure cargo to use proxy for crate downloads
+RUN mkdir -p /usr/local/cargo && \
+    echo '[http]' > /usr/local/cargo/config.toml && \
+    echo 'proxy = "http://host.containers.internal:1080"' >> /usr/local/cargo/config.toml && \
+    echo '' >> /usr/local/cargo/config.toml && \
+    echo '[https]' >> /usr/local/cargo/config.toml && \
+    echo 'proxy = "http://host.containers.internal:1080"' >> /usr/local/cargo/config.toml
+
+EXPOSE 3001
+
+VOLUME ["/app"]
+
+WORKDIR /app
+
+CMD ["sh", "-c", "cargo install cargo-watch && cargo watch -w crates -x 'run --bin server'"]

@@ -268,25 +268,51 @@ impl From<AsyncGroupChild> for SpawnedChild {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS, JsonSchema)]
-#[serde(transparent)]
 #[schemars(
     title = "Append Prompt",
     description = "Extra text appended to the prompt",
     extend("format" = "textarea")
 )]
 #[derive(Default)]
-pub struct AppendPrompt(pub Option<String>);
+pub struct AppendPrompt {
+    pub prefix: Option<String>,
+    pub suffix: Option<String>,
+}
 
 impl AppendPrompt {
+    pub fn new(prefix: Option<String>, suffix: Option<String>) -> Self {
+        Self { prefix, suffix }
+    }
+
+    pub fn with_prefix(prefix: String) -> Self {
+        Self {
+            prefix: Some(prefix),
+            suffix: None,
+        }
+    }
+
+    pub fn with_suffix(suffix: String) -> Self {
+        Self {
+            prefix: None,
+            suffix: Some(suffix),
+        }
+    }
+
     pub fn get(&self) -> Option<String> {
-        self.0.clone()
+        self.suffix.clone()
     }
 
     pub fn combine_prompt(&self, prompt: &str) -> String {
-        match self {
-            AppendPrompt(Some(value)) => format!("{prompt}{value}"),
-            AppendPrompt(None) => prompt.to_string(),
+        let mut result = String::new();
+        if let Some(ref prefix) = self.prefix {
+            result.push_str(prefix);
+            result.push('\n');
         }
+        result.push_str(prompt);
+        if let Some(ref suffix) = self.suffix {
+            result.push_str(suffix);
+        }
+        result
     }
 }
 

@@ -18,7 +18,7 @@ function executorSchemasPlugin(): Plugin {
     load(id) {
       if (id !== RESOLVED_VIRTUAL_ID) return null;
 
-      const schemasDir = path.resolve(__dirname, "../shared/schemas");
+      const schemasDir = path.resolve(__dirname, "./shared/schemas");
       const files = fs.existsSync(schemasDir)
         ? fs.readdirSync(schemasDir).filter((f) => f.endsWith(".json"))
         : [];
@@ -63,20 +63,39 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: parseInt(process.env.FRONTEND_PORT || "3000"),
+    hmr: {
+      clientPort: 3000,
+    },
+    watch: {
+      usePolling: true,
+    },
     proxy: {
       "/api": {
-        target: `http://127.0.0.1:${process.env.BACKEND_PORT || "3001"}`,
+        target: `http://${process.env.BACKEND_HOST || "127.0.0.1"}:${process.env.BACKEND_PORT || "3000"}`,
         changeOrigin: true,
         ws: true,
       }
     },
     fs: {
-      allow: [path.resolve(__dirname, "."), path.resolve(__dirname, "..")],
+      allow: [path.resolve(__dirname, "."), path.resolve(__dirname, "./shared")],
     },
     open: process.env.VITE_OPEN === "true",
   },
   optimizeDeps: {
     exclude: ["wa-sqlite"],
   },
-  build: { sourcemap: true },
+  build: {
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-ui': ['framer-motion', 'lucide-react', '@radix-ui/react-tooltip'],
+          'vendor-data': ['@tanstack/react-query', 'zustand'],
+          'vendor-editor': ['@codemirror/view', '@codemirror/language', '@codemirror/lang-json', '@uiw/react-codemirror'],
+          'vendor-form': ['@tanstack/react-form', '@rjsf/shadcn'],
+        }
+      }
+    }
+  },
 });

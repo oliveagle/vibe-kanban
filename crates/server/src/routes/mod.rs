@@ -2,11 +2,13 @@ use axum::{
     Router,
     routing::{IntoMakeService, get},
 };
+use tower_http::cors::{Any, CorsLayer};
 
 use crate::DeploymentImpl;
 
 pub mod approvals;
 pub mod config;
+pub mod container_orchestration;
 pub mod containers;
 pub mod filesystem;
 // pub mod github;
@@ -32,6 +34,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .route("/health", get(health::health_check))
         .merge(config::router())
         .merge(containers::router(&deployment))
+        .merge(container_orchestration::router(&deployment))
         .merge(projects::router(&deployment))
         .merge(tasks::router(&deployment))
         .merge(shared_tasks::router())
@@ -49,9 +52,15 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .nest("/images", images::routes())
         .with_state(deployment);
 
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
     Router::new()
         .route("/", get(frontend::serve_frontend_root))
         .route("/{*path}", get(frontend::serve_frontend))
         .nest("/api", base_routes)
+        .layer(cors)
         .into_make_service()
 }
