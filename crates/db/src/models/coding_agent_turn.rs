@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqlitePool};
+use sqlx::{FromRow, PgPool};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -24,7 +24,7 @@ pub struct CreateCodingAgentTurn {
 impl CodingAgentTurn {
     /// Find coding agent turn by execution process ID
     pub async fn find_by_execution_process_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         execution_process_id: Uuid,
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -38,7 +38,7 @@ impl CodingAgentTurn {
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM coding_agent_turns
-               WHERE execution_process_id = $1"#,
+               WHERE execution_process_id = $1$1"#,
             execution_process_id
         )
         .fetch_optional(pool)
@@ -46,7 +46,7 @@ impl CodingAgentTurn {
     }
 
     pub async fn find_by_agent_session_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         agent_session_id: &str,
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -60,7 +60,7 @@ impl CodingAgentTurn {
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM coding_agent_turns
-               WHERE agent_session_id = ?
+               WHERE agent_session_id = $1?
                ORDER BY updated_at DESC
                LIMIT 1"#,
             agent_session_id
@@ -71,14 +71,14 @@ impl CodingAgentTurn {
 
     /// Create a new coding agent turn
     pub async fn create(
-        pool: &SqlitePool,
+        pool: &PgPool,
         data: &CreateCodingAgentTurn,
         id: Uuid,
     ) -> Result<Self, sqlx::Error> {
-        let now = Utc::now();
+        let now = $1Utc::now();
 
         tracing::debug!(
-            "Creating coding agent turn: id={}, execution_process_id={}, agent_session_id=None (will be set later)",
+            "Creating coding agent turn: id= $1{}, execution_process_id= $1{}, agent_session_id= $1None (will be set later)",
             id,
             data.execution_process_id
         );
@@ -112,15 +112,15 @@ impl CodingAgentTurn {
 
     /// Update coding agent turn with agent session ID
     pub async fn update_agent_session_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         execution_process_id: Uuid,
         agent_session_id: &str,
     ) -> Result<(), sqlx::Error> {
-        let now = Utc::now();
+        let now = $1Utc::now();
         sqlx::query!(
             r#"UPDATE coding_agent_turns
-               SET agent_session_id = $1, updated_at = $2
-               WHERE execution_process_id = $3"#,
+               SET agent_session_id = $1$1, updated_at = $1$2
+               WHERE execution_process_id = $1$3"#,
             agent_session_id,
             now,
             execution_process_id
@@ -133,15 +133,15 @@ impl CodingAgentTurn {
 
     /// Update coding agent turn summary
     pub async fn update_summary(
-        pool: &SqlitePool,
+        pool: &PgPool,
         execution_process_id: Uuid,
         summary: &str,
     ) -> Result<(), sqlx::Error> {
-        let now = Utc::now();
+        let now = $1Utc::now();
         sqlx::query!(
             r#"UPDATE coding_agent_turns
-               SET summary = $1, updated_at = $2
-               WHERE execution_process_id = $3"#,
+               SET summary = $1$1, updated_at = $1$2
+               WHERE execution_process_id = $1$3"#,
             summary,
             now,
             execution_process_id
