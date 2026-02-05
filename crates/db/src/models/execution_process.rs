@@ -217,12 +217,24 @@ impl ExecutionProcess {
         .await
     }
 
-    /// Find all execution processes for a session (optionally include soft-deleted)
+    /// Find execution processes for a session with optional pagination
+    /// 
+    /// # Arguments
+    /// * `pool` - Database connection pool
+    /// * `session_id` - Session ID to filter by
+    /// * `show_soft_deleted` - Whether to include soft-deleted processes
+    /// * `limit` - Maximum number of processes to return (None for all)
+    /// * `offset` - Number of processes to skip (None for 0)
     pub async fn find_by_session_id(
         pool: &SqlitePool,
         session_id: Uuid,
         show_soft_deleted: bool,
+        limit: Option<i64>,
+        offset: Option<i64>,
     ) -> Result<Vec<Self>, sqlx::Error> {
+        let limit = limit.unwrap_or(-1);
+        let offset = offset.unwrap_or(0);
+
         sqlx::query_as!(
             ExecutionProcess,
             r#"SELECT
@@ -240,9 +252,12 @@ impl ExecutionProcess {
                FROM execution_processes ep
                WHERE ep.session_id = ?
                  AND (? OR ep.dropped = FALSE)
-               ORDER BY ep.created_at ASC"#,
+               ORDER BY ep.created_at ASC
+               LIMIT ? OFFSET ?"#,
             session_id,
-            show_soft_deleted
+            show_soft_deleted,
+            limit,
+            offset
         )
         .fetch_all(pool)
         .await
