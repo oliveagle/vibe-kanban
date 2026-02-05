@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqlitePool, Type};
+use sqlx::{FromRow, PgPool, Type};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -59,7 +59,7 @@ pub enum MergeType {
 }
 
 #[derive(FromRow)]
-struct MergeRow {
+pub struct MergeRow {
     id: Uuid,
     workspace_id: Uuid,
     repo_id: Uuid,
@@ -84,7 +84,7 @@ impl Merge {
 
     /// Create a direct merge record
     pub async fn create_direct(
-        pool: &SqlitePool,
+        pool: &PgPool,
         workspace_id: Uuid,
         repo_id: Uuid,
         target_branch_name: &str,
@@ -93,11 +93,11 @@ impl Merge {
         let id = Uuid::new_v4();
         let now = Utc::now();
 
-        sqlx::query_as!(
+        let row: MergeRow = sqlx::query_as!(
             MergeRow,
             r#"INSERT INTO merges (
                 id, workspace_id, repo_id, merge_type, merge_commit, created_at, target_branch_name
-            ) VALUES ($1, $2, $3, 'direct', $4, $5, $6)
+            ) VALUES (?, ?2, ?3, 'direct', ?4, ?5, ?6)
             RETURNING
                 id as "id!: Uuid",
                 workspace_id as "workspace_id!: Uuid",
@@ -120,12 +120,12 @@ impl Merge {
             target_branch_name
         )
         .fetch_one(pool)
-        .await
-        .map(Into::into)
+        .await?;
+        Ok(row.into())
     }
     /// Create a new PR record (when PR is opened)
     pub async fn create_pr(
-        pool: &SqlitePool,
+        pool: &PgPool,
         workspace_id: Uuid,
         repo_id: Uuid,
         target_branch_name: &str,
@@ -139,7 +139,7 @@ impl Merge {
             MergeRow,
             r#"INSERT INTO merges (
                 id, workspace_id, repo_id, merge_type, pr_number, pr_url, pr_status, created_at, target_branch_name
-            ) VALUES ($1, $2, $3, 'pr', $4, $5, 'open', $6, $7)
+            ) VALUES (?, ?2, ?3, 'pr', ?4, ?5, 'open', ?6, ?7)
             RETURNING
                 id as "id!: Uuid",
                 workspace_id as "workspace_id!: Uuid",
@@ -168,7 +168,7 @@ impl Merge {
     }
 
     /// Get all open PRs for monitoring
-    pub async fn get_open_prs(pool: &SqlitePool) -> Result<Vec<PrMerge>, sqlx::Error> {
+    pub async fn get_open_prs(pool: &PgPool) -> Result<Vec<PrMerge>, sqlx::Error> {
         let rows = sqlx::query_as!(
             MergeRow,
             r#"SELECT
@@ -196,7 +196,7 @@ impl Merge {
 
     /// Update PR status for a workspace
     pub async fn update_status(
-        pool: &SqlitePool,
+        pool: &PgPool,
         merge_id: Uuid,
         pr_status: MergeStatus,
         merge_commit_sha: Option<String>,
@@ -209,10 +209,10 @@ impl Merge {
 
         sqlx::query!(
             r#"UPDATE merges
-            SET pr_status = $1,
-                pr_merge_commit_sha = $2,
-                pr_merged_at = $3
-            WHERE id = $4"#,
+            SET pr_status = ?,
+                pr_merge_commit_sha = ?2,
+                pr_merged_at = ?3
+            WHERE id = ?4"#,
             pr_status,
             merge_commit_sha,
             merged_at,
@@ -225,7 +225,7 @@ impl Merge {
     }
     /// Find all merges for a workspace (returns both direct and PR merges)
     pub async fn find_by_workspace_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         workspace_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         // Get raw data from database
@@ -245,7 +245,7 @@ impl Merge {
                 target_branch_name as "target_branch_name!: String",
                 created_at as "created_at!: DateTime<Utc>"
             FROM merges
-            WHERE workspace_id = $1
+            WHERE workspace_id = ?
             ORDER BY created_at DESC"#,
             workspace_id
         )
@@ -258,7 +258,7 @@ impl Merge {
 
     /// Find all merges for a workspace and specific repo
     pub async fn find_by_workspace_and_repo_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         workspace_id: Uuid,
         repo_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
@@ -278,7 +278,7 @@ impl Merge {
                 target_branch_name as "target_branch_name!: String",
                 created_at as "created_at!: DateTime<Utc>"
             FROM merges
-            WHERE workspace_id = $1 AND repo_id = $2
+            WHERE workspace_id = ? AND repo_id = ?2
             ORDER BY created_at DESC"#,
             workspace_id,
             repo_id

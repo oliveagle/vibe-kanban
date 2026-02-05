@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqlitePool};
+use sqlx::{FromRow, PgPool};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -26,7 +26,7 @@ pub struct UpdateTag {
 }
 
 impl Tag {
-    pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_all(pool: &PgPool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             Tag,
             r#"SELECT id as "id!: Uuid", tag_name, content as "content!", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
@@ -37,24 +37,24 @@ impl Tag {
         .await
     }
 
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Tag,
             r#"SELECT id as "id!: Uuid", tag_name, content as "content!", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tags
-               WHERE id = $1"#,
+               WHERE id = "#,
             id
         )
         .fetch_optional(pool)
         .await
     }
 
-    pub async fn create(pool: &SqlitePool, data: &CreateTag) -> Result<Self, sqlx::Error> {
+    pub async fn create(pool: &PgPool, data: &CreateTag) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
         sqlx::query_as!(
             Tag,
             r#"INSERT INTO tags (id, tag_name, content)
-               VALUES ($1, $2, $3)
+               VALUES (?, ?2, ?3)
                RETURNING id as "id!: Uuid", tag_name, content as "content!", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             id,
             data.tag_name,
@@ -65,7 +65,7 @@ impl Tag {
     }
 
     pub async fn update(
-        pool: &SqlitePool,
+        pool: &PgPool,
         id: Uuid,
         data: &UpdateTag,
     ) -> Result<Self, sqlx::Error> {
@@ -79,8 +79,8 @@ impl Tag {
         sqlx::query_as!(
             Tag,
             r#"UPDATE tags
-               SET tag_name = $2, content = $3, updated_at = datetime('now', 'subsec')
-               WHERE id = $1
+               SET tag_name = ?2, content = ?3, updated_at = NOW()
+               WHERE id = ?
                RETURNING id as "id!: Uuid", tag_name, content as "content!", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             id,
             tag_name,
@@ -90,8 +90,8 @@ impl Tag {
         .await
     }
 
-    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query!("DELETE FROM tags WHERE id = $1", id)
+    pub async fn delete(pool: &PgPool, id: Uuid) -> Result<u64, sqlx::Error> {
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!("DELETE FROM tags WHERE id = ", id)
             .execute(pool)
             .await?;
         Ok(result.rows_affected())

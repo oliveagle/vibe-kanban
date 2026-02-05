@@ -2,7 +2,7 @@ use std::path::Path;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqlitePool};
+use sqlx::{FromRow, PgPool, Postgres};
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
@@ -60,7 +60,7 @@ pub struct UpdateProjectRepo {
 
 impl ProjectRepo {
     pub async fn find_by_project_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -73,7 +73,7 @@ impl ProjectRepo {
                       copy_files,
                       parallel_setup_script as "parallel_setup_script!: bool"
                FROM project_repos
-               WHERE project_id = $1"#,
+               WHERE project_id = "#,
             project_id
         )
         .fetch_all(pool)
@@ -81,7 +81,7 @@ impl ProjectRepo {
     }
 
     pub async fn find_by_repo_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         repo_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -94,7 +94,7 @@ impl ProjectRepo {
                       copy_files,
                       parallel_setup_script as "parallel_setup_script!: bool"
                FROM project_repos
-               WHERE repo_id = $1"#,
+               WHERE repo_id = "#,
             repo_id
         )
         .fetch_all(pool)
@@ -102,7 +102,7 @@ impl ProjectRepo {
     }
 
     pub async fn find_by_project_id_with_names(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
     ) -> Result<Vec<ProjectRepoWithName>, sqlx::Error> {
         sqlx::query_as!(
@@ -117,7 +117,7 @@ impl ProjectRepo {
                       pr.parallel_setup_script as "parallel_setup_script!: bool"
                FROM project_repos pr
                JOIN repos r ON r.id = pr.repo_id
-               WHERE pr.project_id = $1
+               WHERE pr.project_id = ?
                ORDER BY r.display_name ASC"#,
             project_id
         )
@@ -126,7 +126,7 @@ impl ProjectRepo {
     }
 
     pub async fn find_repos_for_project(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
     ) -> Result<Vec<Repo>, sqlx::Error> {
         sqlx::query_as!(
@@ -139,7 +139,7 @@ impl ProjectRepo {
                       r.updated_at as "updated_at!: DateTime<Utc>"
                FROM repos r
                JOIN project_repos pr ON r.id = pr.repo_id
-               WHERE pr.project_id = $1
+               WHERE pr.project_id = ?
                ORDER BY r.display_name ASC"#,
             project_id
         )
@@ -148,7 +148,7 @@ impl ProjectRepo {
     }
 
     pub async fn find_by_project_and_repo(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
         repo_id: Uuid,
     ) -> Result<Option<Self>, sqlx::Error> {
@@ -162,7 +162,7 @@ impl ProjectRepo {
                       copy_files,
                       parallel_setup_script as "parallel_setup_script!: bool"
                FROM project_repos
-               WHERE project_id = $1 AND repo_id = $2"#,
+               WHERE project_id = ? AND repo_id = ?2"#,
             project_id,
             repo_id
         )
@@ -171,7 +171,7 @@ impl ProjectRepo {
     }
 
     pub async fn add_repo_to_project(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
         repo_path: &str,
         repo_name: &str,
@@ -188,7 +188,7 @@ impl ProjectRepo {
         let id = Uuid::new_v4();
         sqlx::query!(
             r#"INSERT INTO project_repos (id, project_id, repo_id)
-               VALUES ($1, $2, $3)"#,
+               VALUES (?, ?2, ?3)"#,
             id,
             project_id,
             repo.id
@@ -200,12 +200,12 @@ impl ProjectRepo {
     }
 
     pub async fn remove_repo_from_project(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
         repo_id: Uuid,
     ) -> Result<(), ProjectRepoError> {
-        let result = sqlx::query!(
-            "DELETE FROM project_repos WHERE project_id = $1 AND repo_id = $2",
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!(
+            "DELETE FROM project_repos WHERE project_id = ? AND repo_id = ?2",
             project_id,
             repo_id
         )
@@ -220,7 +220,7 @@ impl ProjectRepo {
     }
 
     pub async fn create(
-        executor: impl sqlx::Executor<'_, Database = sqlx::Sqlite>,
+        executor: impl sqlx::Executor<'_, Database = Postgres>,
         project_id: Uuid,
         repo_id: Uuid,
     ) -> Result<Self, sqlx::Error> {
@@ -228,7 +228,7 @@ impl ProjectRepo {
         sqlx::query_as!(
             ProjectRepo,
             r#"INSERT INTO project_repos (id, project_id, repo_id)
-               VALUES ($1, $2, $3)
+               VALUES (?, ?2, ?3)
                RETURNING id as "id!: Uuid",
                          project_id as "project_id!: Uuid",
                          repo_id as "repo_id!: Uuid",
@@ -245,7 +245,7 @@ impl ProjectRepo {
     }
 
     pub async fn update(
-        pool: &SqlitePool,
+        pool: &PgPool,
         project_id: Uuid,
         repo_id: Uuid,
         payload: &UpdateProjectRepo,
@@ -263,11 +263,11 @@ impl ProjectRepo {
         sqlx::query_as!(
             ProjectRepo,
             r#"UPDATE project_repos
-               SET setup_script = $1,
-                   cleanup_script = $2,
-                   copy_files = $3,
-                   parallel_setup_script = $4
-               WHERE project_id = $5 AND repo_id = $6
+               SET setup_script = ?,
+                   cleanup_script = ?2,
+                   copy_files = ?3,
+                   parallel_setup_script = ?4
+               WHERE project_id = ?5 AND repo_id = ?6
                RETURNING id as "id!: Uuid",
                          project_id as "project_id!: Uuid",
                          repo_id as "repo_id!: Uuid",

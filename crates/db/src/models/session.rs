@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqlitePool};
+use sqlx::{FromRow, PgPool};
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
@@ -30,7 +30,7 @@ pub struct CreateSession {
 }
 
 impl Session {
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Session,
             r#"SELECT id AS "id!: Uuid",
@@ -39,7 +39,7 @@ impl Session {
                       created_at AS "created_at!: DateTime<Utc>",
                       updated_at AS "updated_at!: DateTime<Utc>"
                FROM sessions
-               WHERE id = $1"#,
+               WHERE id = "#,
             id
         )
         .fetch_optional(pool)
@@ -47,7 +47,7 @@ impl Session {
     }
 
     pub async fn find_by_workspace_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         workspace_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -58,7 +58,7 @@ impl Session {
                       created_at AS "created_at!: DateTime<Utc>",
                       updated_at AS "updated_at!: DateTime<Utc>"
                FROM sessions
-               WHERE workspace_id = $1
+               WHERE workspace_id = ?
                ORDER BY created_at DESC"#,
             workspace_id
         )
@@ -68,7 +68,7 @@ impl Session {
 
     /// Find the latest session for a workspace
     pub async fn find_latest_by_workspace_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         workspace_id: Uuid,
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -79,7 +79,7 @@ impl Session {
                       created_at AS "created_at!: DateTime<Utc>",
                       updated_at AS "updated_at!: DateTime<Utc>"
                FROM sessions
-               WHERE workspace_id = $1
+               WHERE workspace_id = ?
                ORDER BY created_at DESC
                LIMIT 1"#,
             workspace_id
@@ -89,7 +89,7 @@ impl Session {
     }
 
     pub async fn create(
-        pool: &SqlitePool,
+        pool: &PgPool,
         data: &CreateSession,
         id: Uuid,
         workspace_id: Uuid,
@@ -97,7 +97,7 @@ impl Session {
         Ok(sqlx::query_as!(
             Session,
             r#"INSERT INTO sessions (id, workspace_id, executor)
-               VALUES ($1, $2, $3)
+               VALUES (?, ?2, ?3)
                RETURNING id AS "id!: Uuid",
                          workspace_id AS "workspace_id!: Uuid",
                          executor,

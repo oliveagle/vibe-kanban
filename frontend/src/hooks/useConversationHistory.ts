@@ -486,21 +486,32 @@ export const useConversationHistory = ({
 
       if (!executionProcesses?.current) return localDisplayedExecutionProcesses;
 
-      for (const executionProcess of [
-        ...executionProcesses.current,
-      ].reverse()) {
-        if (executionProcess.status === ExecutionProcessStatus.running)
-          continue;
+      // Filter and reverse once
+      const historicProcesses = [...executionProcesses.current]
+        .reverse()
+        .filter((ep) => ep.status !== ExecutionProcessStatus.running);
 
-        const entries =
-          await loadEntriesForHistoricExecutionProcess(executionProcess);
+      // Load all entries in parallel instead of sequentially
+      const entriesPromises = historicProcesses.map(async (executionProcess) => {
+        const entries = await loadEntriesForHistoricExecutionProcess(executionProcess);
         const entriesWithKey = entries.map((e, idx) =>
           patchWithKey(e, executionProcess.id, idx)
         );
-
-        localDisplayedExecutionProcesses[executionProcess.id] = {
+        return {
+          id: executionProcess.id,
           executionProcess,
           entries: entriesWithKey,
+        };
+      });
+
+      // Wait for all to complete in parallel
+      const results = await Promise.all(entriesPromises);
+
+      // Add to local state until we have enough entries
+      for (const result of results) {
+        localDisplayedExecutionProcesses[result.id] = {
+          executionProcess: result.executionProcess,
+          entries: result.entries,
         };
 
         if (
@@ -518,39 +529,42 @@ export const useConversationHistory = ({
     async (batchSize: number): Promise<boolean> => {
       if (!executionProcesses?.current) return false;
 
-      let anyUpdated = false;
-      for (const executionProcess of [
-        ...executionProcesses.current,
-      ].reverse()) {
-        const current = displayedExecutionProcesses.current;
-        if (
-          current[executionProcess.id] ||
-          executionProcess.status === ExecutionProcessStatus.running
-        )
-          continue;
+      // Get processes that need loading (not already loaded, not running)
+      const processesToLoad = [...executionProcesses.current]
+        .reverse()
+        .filter((ep) => {
+          const current = displayedExecutionProcesses.current;
+          return !current[ep.id] && ep.status !== ExecutionProcessStatus.running;
+        });
 
-        const entries =
-          await loadEntriesForHistoricExecutionProcess(executionProcess);
+      if (processesToLoad.length === 0) return false;
+
+      // Load all remaining in parallel
+      const entriesPromises = processesToLoad.map(async (executionProcess) => {
+        const entries = await loadEntriesForHistoricExecutionProcess(executionProcess);
         const entriesWithKey = entries.map((e, idx) =>
           patchWithKey(e, executionProcess.id, idx)
         );
+        return {
+          id: executionProcess.id,
+          executionProcess,
+          entries: entriesWithKey,
+        };
+      });
 
+      const results = await Promise.all(entriesPromises);
+
+      // Add all results to state
+      for (const result of results) {
         mergeIntoDisplayed((state) => {
-          state[executionProcess.id] = {
-            executionProcess,
-            entries: entriesWithKey,
+          state[result.id] = {
+            executionProcess: result.executionProcess,
+            entries: result.entries,
           };
         });
-
-        if (
-          flattenEntries(displayedExecutionProcesses.current).length > batchSize
-        ) {
-          anyUpdated = true;
-          break;
-        }
-        anyUpdated = true;
       }
-      return anyUpdated;
+
+      return true;
     },
     [executionProcesses]
   );

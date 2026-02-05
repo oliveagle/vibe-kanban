@@ -1,14 +1,15 @@
 //! Local authentication service for development/self-hosted mode
-//!
+//! 
 //! This provides a simple username/password authentication system
 //! as an alternative to OAuth for local deployments.
 
-use bcrypt::{DEFAULT_COST, hash, verify};
+use bcrypt::{hash, verify, DEFAULT_COST};
 use chrono::{DateTime, Duration, Utc};
 use db::DBService;
-use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use sqlx::{Row, SqlitePool, sqlite::SqliteRow};
+use sqlx::sqlite::PostgresRow;
+use sqlx::{Row, PgPool};
 use thiserror::Error;
 use tracing;
 use uuid::Uuid;
@@ -42,10 +43,10 @@ pub enum LocalAuthError {
 /// Claims stored in the JWT token
 #[derive(Debug, Serialize, Deserialize)]
 struct TokenClaims {
-    sub: String, // User ID
+    sub: String,    // User ID
     username: String,
-    exp: i64, // Expiration timestamp
-    iat: i64, // Issued at timestamp
+    exp: i64,       // Expiration timestamp
+    iat: i64,       // Issued at timestamp
 }
 
 /// User data stored in database
@@ -69,7 +70,7 @@ pub struct AuthResponse {
 /// Local authentication service
 #[derive(Clone)]
 pub struct LocalAuthService {
-    pool: SqlitePool,
+    pool: PgPool,
     jwt_secret: String,
 }
 
@@ -77,8 +78,9 @@ impl LocalAuthService {
     /// Create a new local auth service
     pub fn new(db: &DBService) -> Self {
         let pool = db.pool.clone();
-        let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| generate_random_secret());
-
+        let jwt_secret = std::env::var("JWT_SECRET")
+            .unwrap_or_else(|_| generate_random_secret());
+        
         Self { pool, jwt_secret }
     }
 
@@ -93,7 +95,7 @@ impl LocalAuthService {
                 password_hash TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            "#,
+            "#
         )
         .execute(&self.pool)
         .await?;
@@ -101,21 +103,19 @@ impl LocalAuthService {
         // Check if default user exists
         let default_username = get_default_username();
         let default_password = get_default_password();
-
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM local_users WHERE username = ?")
-            .bind(&default_username)
-            .fetch_one(&self.pool)
-            .await?;
+        
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM local_users WHERE username = ?"
+        )
+        .bind(&default_username)
+        .fetch_one(&self.pool)
+        .await?;
 
         if count == 0 {
             tracing::info!("Creating default local user: {}", default_username);
-            self.create_user(&default_username, &default_password)
-                .await?;
-            tracing::info!(
-                "Default user created. Username: {}, Password: {}",
-                default_username,
-                default_password
-            );
+            self.create_user(&default_username, &default_password).await?;
+            tracing::info!("Default user created. Username: {}, Password: {}", 
+                default_username, default_password);
         }
 
         Ok(())
@@ -128,11 +128,12 @@ impl LocalAuthService {
         password: &str,
     ) -> Result<LocalUser, LocalAuthError> {
         // Check if user already exists
-        let existing: Option<i64> =
-            sqlx::query_scalar("SELECT COUNT(*) FROM local_users WHERE username = ?")
-                .bind(username)
-                .fetch_one(&self.pool)
-                .await?;
+        let existing: Option<i64> = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM local_users WHERE username = ?"
+        )
+        .bind(username)
+        .fetch_one(&self.pool)
+        .await?;
 
         if existing.unwrap_or(0) > 0 {
             return Err(LocalAuthError::UserAlreadyExists);
@@ -146,7 +147,7 @@ impl LocalAuthService {
         let created_at = Utc::now();
 
         sqlx::query(
-            "INSERT INTO local_users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
+            "INSERT INTO local_users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)"
         )
         .bind(&id)
         .bind(username)
@@ -170,8 +171,8 @@ impl LocalAuthService {
         password: &str,
     ) -> Result<AuthResponse, LocalAuthError> {
         // Fetch user
-        let row: Option<SqliteRow> = sqlx::query(
-            "SELECT id, username, password_hash, created_at FROM local_users WHERE username = ?",
+        let row: Option<PostgresRow> = sqlx::query(
+            "SELECT id, username, password_hash, created_at FROM local_users WHERE username = ?"
         )
         .bind(username)
         .fetch_optional(&self.pool)
@@ -239,7 +240,7 @@ impl LocalAuthService {
     /// Check if local auth is enabled (users table exists)
     pub async fn is_enabled(&self) -> bool {
         sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='local_users'",
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='local_users'"
         )
         .fetch_one(&self.pool)
         .await
@@ -255,8 +256,9 @@ impl LocalAuthService {
 
 /// Generate a random secret for JWT signing
 fn generate_random_secret() -> String {
-    use rand::{Rng, distributions::Alphanumeric};
-
+    use rand::distributions::Alphanumeric;
+    use rand::Rng;
+    
     rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(32)
@@ -272,10 +274,10 @@ mod tests {
     async fn test_password_hashing() {
         let password = "test_password123";
         let hash = bcrypt::hash(password.as_bytes(), DEFAULT_COST).unwrap();
-
+        
         // Should verify correctly
         assert!(bcrypt::verify(password.as_bytes(), &hash).unwrap());
-
+        
         // Wrong password should fail
         assert!(!bcrypt::verify("wrong_password".as_bytes(), &hash).unwrap());
     }

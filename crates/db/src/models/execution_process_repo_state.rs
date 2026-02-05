@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqlitePool};
+use sqlx::{FromRow, PgPool};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -28,7 +28,7 @@ pub struct CreateExecutionProcessRepoState {
 
 impl ExecutionProcessRepoState {
     pub async fn create_many(
-        pool: &SqlitePool,
+        pool: &PgPool,
         execution_process_id: Uuid,
         entries: &[CreateExecutionProcessRepoState],
     ) -> Result<(), sqlx::Error> {
@@ -68,7 +68,7 @@ impl ExecutionProcessRepoState {
     }
 
     pub async fn update_before_head_commit(
-        pool: &SqlitePool,
+        pool: &PgPool,
         execution_process_id: Uuid,
         repo_id: Uuid,
         before_head_commit: &str,
@@ -76,9 +76,9 @@ impl ExecutionProcessRepoState {
         let now = Utc::now();
         sqlx::query!(
             r#"UPDATE execution_process_repo_states
-               SET before_head_commit = $1, updated_at = $2
-             WHERE execution_process_id = $3
-               AND repo_id = $4"#,
+               SET before_head_commit = ?, updated_at = ?2
+             WHERE execution_process_id = ?3
+               AND repo_id = ?4"#,
             before_head_commit,
             now,
             execution_process_id,
@@ -90,7 +90,7 @@ impl ExecutionProcessRepoState {
     }
 
     pub async fn update_after_head_commit(
-        pool: &SqlitePool,
+        pool: &PgPool,
         execution_process_id: Uuid,
         repo_id: Uuid,
         after_head_commit: &str,
@@ -98,9 +98,9 @@ impl ExecutionProcessRepoState {
         let now = Utc::now();
         sqlx::query!(
             r#"UPDATE execution_process_repo_states
-               SET after_head_commit = $1, updated_at = $2
-             WHERE execution_process_id = $3
-               AND repo_id = $4"#,
+               SET after_head_commit = ?, updated_at = ?2
+             WHERE execution_process_id = ?3
+               AND repo_id = ?4"#,
             after_head_commit,
             now,
             execution_process_id,
@@ -112,7 +112,7 @@ impl ExecutionProcessRepoState {
     }
 
     pub async fn set_merge_commit(
-        pool: &SqlitePool,
+        pool: &PgPool,
         execution_process_id: Uuid,
         repo_id: Uuid,
         merge_commit: &str,
@@ -120,9 +120,9 @@ impl ExecutionProcessRepoState {
         let now = Utc::now();
         sqlx::query!(
             r#"UPDATE execution_process_repo_states
-               SET merge_commit = $1, updated_at = $2
-             WHERE execution_process_id = $3
-               AND repo_id = $4"#,
+               SET merge_commit = ?, updated_at = ?2
+             WHERE execution_process_id = ?3
+               AND repo_id = ?4"#,
             merge_commit,
             now,
             execution_process_id,
@@ -134,7 +134,7 @@ impl ExecutionProcessRepoState {
     }
 
     pub async fn find_by_execution_process_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         execution_process_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -149,7 +149,7 @@ impl ExecutionProcessRepoState {
                     created_at as "created_at!: DateTime<Utc>",
                     updated_at as "updated_at!: DateTime<Utc>"
                FROM execution_process_repo_states
-               WHERE execution_process_id = $1
+               WHERE execution_process_id = ?
                ORDER BY created_at ASC"#,
             execution_process_id
         )

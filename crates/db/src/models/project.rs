@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{Executor, FromRow, Sqlite, SqlitePool};
+use sqlx::{Executor, FromRow, Postgres, PgPool};
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
@@ -60,13 +60,13 @@ pub enum SearchMatchType {
 }
 
 impl Project {
-    pub async fn count(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
+    pub async fn count(pool: &PgPool) -> Result<i64, sqlx::Error> {
         sqlx::query_scalar!(r#"SELECT COUNT(*) as "count!: i64" FROM projects"#)
             .fetch_one(pool)
             .await
     }
 
-    pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_all(pool: &PgPool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             Project,
             r#"SELECT id as "id!: Uuid",
@@ -85,7 +85,7 @@ impl Project {
     }
 
     /// Find the most actively used projects based on recent task activity
-    pub async fn find_most_active(pool: &SqlitePool, limit: i32) -> Result<Vec<Self>, sqlx::Error> {
+    pub async fn find_most_active(pool: &PgPool, limit: i32) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             Project,
             r#"
@@ -100,7 +100,7 @@ impl Project {
                 INNER JOIN workspaces w ON w.task_id = t.id
                 ORDER BY w.updated_at DESC
             )
-            LIMIT $1
+            LIMIT ?
             "#,
             limit
         )
@@ -108,7 +108,7 @@ impl Project {
         .await
     }
 
-    pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Project,
             r#"SELECT id as "id!: Uuid",
@@ -120,14 +120,14 @@ impl Project {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM projects
-               WHERE id = $1"#,
+               WHERE id = "#,
             id
         )
         .fetch_optional(pool)
         .await
     }
 
-    pub async fn find_by_rowid(pool: &SqlitePool, rowid: i64) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_ctid(pool: &PgPool, ctid: i64) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Project,
             r#"SELECT id as "id!: Uuid",
@@ -139,15 +139,15 @@ impl Project {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM projects
-               WHERE rowid = $1"#,
-            rowid
+               WHERE ctid = "#,
+            ctid
         )
         .fetch_optional(pool)
         .await
     }
 
     pub async fn find_by_remote_project_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         remote_project_id: Uuid,
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
@@ -161,7 +161,7 @@ impl Project {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM projects
-               WHERE remote_project_id = $1
+               WHERE remote_project_id = ?
                LIMIT 1"#,
             remote_project_id
         )
@@ -170,7 +170,7 @@ impl Project {
     }
 
     pub async fn create(
-        executor: impl Executor<'_, Database = Sqlite>,
+        executor: impl Executor<'_, Database = Postgres>,
         data: &CreateProject,
         project_id: Uuid,
     ) -> Result<Self, sqlx::Error> {
@@ -180,7 +180,7 @@ impl Project {
                     id,
                     name
                 ) VALUES (
-                    $1, $2
+                    ?, ?2
                 )
                 RETURNING id as "id!: Uuid",
                           name,
@@ -198,7 +198,7 @@ impl Project {
     }
 
     pub async fn update(
-        pool: &SqlitePool,
+        pool: &PgPool,
         id: Uuid,
         payload: &UpdateProject,
     ) -> Result<Self, sqlx::Error> {
@@ -214,8 +214,8 @@ impl Project {
         sqlx::query_as!(
             Project,
             r#"UPDATE projects
-               SET name = $2, dev_script = $3, dev_script_working_dir = $4, default_agent_working_dir = $5
-               WHERE id = $1
+               SET name = ?2, dev_script = ?3, dev_script_working_dir = ?4, default_agent_working_dir = ?5
+               WHERE id = ?
                RETURNING id as "id!: Uuid",
                          name,
                          dev_script,
@@ -235,13 +235,13 @@ impl Project {
     }
 
     pub async fn clear_default_agent_working_dir(
-        pool: &SqlitePool,
+        pool: &PgPool,
         id: Uuid,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             r#"UPDATE projects
                SET default_agent_working_dir = ''
-               WHERE id = $1"#,
+               WHERE id = "#,
             id
         )
         .execute(pool)
@@ -250,14 +250,14 @@ impl Project {
     }
 
     pub async fn set_remote_project_id(
-        pool: &SqlitePool,
+        pool: &PgPool,
         id: Uuid,
         remote_project_id: Option<Uuid>,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             r#"UPDATE projects
-               SET remote_project_id = $2
-               WHERE id = $1"#,
+               SET remote_project_id = ?2
+               WHERE id = "#,
             id,
             remote_project_id
         )
@@ -274,12 +274,12 @@ impl Project {
         remote_project_id: Option<Uuid>,
     ) -> Result<(), sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
         sqlx::query!(
             r#"UPDATE projects
-               SET remote_project_id = $2
-               WHERE id = $1"#,
+               SET remote_project_id = ?2
+               WHERE id = "#,
             id,
             remote_project_id
         )
@@ -289,8 +289,8 @@ impl Project {
         Ok(())
     }
 
-    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query!("DELETE FROM projects WHERE id = $1", id)
+    pub async fn delete(pool: &PgPool, id: Uuid) -> Result<u64, sqlx::Error> {
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!("DELETE FROM projects WHERE id = ", id)
             .execute(pool)
             .await?;
         Ok(result.rows_affected())

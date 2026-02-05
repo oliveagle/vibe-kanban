@@ -8,7 +8,7 @@ use db::{
     },
 };
 use serde_json::json;
-use sqlx::{Error as SqlxError, Sqlite, SqlitePool, decode::Decode, sqlite::SqliteOperation};
+use sqlx::{Error as SqlxError, Postgres, PgPool, decode::Decode, sqlite::PostgresOperation};
 use tokio::sync::RwLock;
 use utils::msg_store::MsgStore;
 use uuid::Uuid;
@@ -44,7 +44,7 @@ impl EventService {
     }
 
     async fn push_task_update_for_task(
-        pool: &SqlitePool,
+        pool: &PgPool,
         msg_store: Arc<MsgStore>,
         task_id: Uuid,
     ) -> Result<(), SqlxError> {
@@ -63,7 +63,7 @@ impl EventService {
     }
 
     async fn push_task_update_for_session(
-        pool: &SqlitePool,
+        pool: &PgPool,
         msg_store: Arc<MsgStore>,
         session_id: Uuid,
     ) -> Result<(), SqlxError> {
@@ -83,13 +83,13 @@ impl EventService {
         entry_count: Arc<RwLock<usize>>,
         db_service: DBService,
     ) -> impl for<'a> Fn(
-        &'a mut sqlx::sqlite::SqliteConnection,
+        &'a mut sqlx::sqlite::PostgresConnection,
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<(), sqlx::Error>> + Send + 'a>,
     > + Send
     + Sync
     + 'static {
-        move |conn: &mut sqlx::sqlite::SqliteConnection| {
+        move |conn: &mut sqlx::sqlite::PostgresConnection| {
             let msg_store_for_hook = msg_store.clone();
             let entry_count_for_hook = entry_count.clone();
             let db_for_hook = db_service.clone();
@@ -99,14 +99,14 @@ impl EventService {
                 handle.set_preupdate_hook({
                     let msg_store_for_preupdate = msg_store_for_hook.clone();
                     move |preupdate: sqlx::sqlite::PreupdateHookResult<'_>| {
-                        if preupdate.operation != SqliteOperation::Delete {
+                        if preupdate.operation != PostgresOperation::Delete {
                             return;
                         }
 
                         match preupdate.table {
                             "tasks" => {
                                 if let Ok(value) = preupdate.get_old_column_value(0)
-                                    && let Ok(task_id) = <Uuid as Decode<Sqlite>>::decode(value)
+                                    && let Ok(task_id) = <Uuid as Decode<Postgres>>::decode(value)
                                 {
                                     let patch = task_patch::remove(task_id);
                                     msg_store_for_preupdate.push_patch(patch);
@@ -114,7 +114,7 @@ impl EventService {
                             }
                             "projects" => {
                                 if let Ok(value) = preupdate.get_old_column_value(0)
-                                    && let Ok(project_id) = <Uuid as Decode<Sqlite>>::decode(value)
+                                    && let Ok(project_id) = <Uuid as Decode<Postgres>>::decode(value)
                                 {
                                     let patch = project_patch::remove(project_id);
                                     msg_store_for_preupdate.push_patch(patch);
@@ -123,7 +123,7 @@ impl EventService {
                             "workspaces" => {
                                 if let Ok(value) = preupdate.get_old_column_value(0)
                                     && let Ok(workspace_id) =
-                                        <Uuid as Decode<Sqlite>>::decode(value)
+                                        <Uuid as Decode<Postgres>>::decode(value)
                                 {
                                     let patch = workspace_patch::remove(workspace_id);
                                     msg_store_for_preupdate.push_patch(patch);
@@ -131,7 +131,7 @@ impl EventService {
                             }
                             "execution_processes" => {
                                 if let Ok(value) = preupdate.get_old_column_value(0)
-                                    && let Ok(process_id) = <Uuid as Decode<Sqlite>>::decode(value)
+                                    && let Ok(process_id) = <Uuid as Decode<Postgres>>::decode(value)
                                 {
                                     let patch = execution_process_patch::remove(process_id);
                                     msg_store_for_preupdate.push_patch(patch);
@@ -140,10 +140,10 @@ impl EventService {
                             "scratch" => {
                                 // Composite key: need both id (column 0) and scratch_type (column 1)
                                 if let Ok(id_val) = preupdate.get_old_column_value(0)
-                                    && let Ok(scratch_id) = <Uuid as Decode<Sqlite>>::decode(id_val)
+                                    && let Ok(scratch_id) = <Uuid as Decode<Postgres>>::decode(id_val)
                                     && let Ok(type_val) = preupdate.get_old_column_value(1)
                                     && let Ok(type_str) =
-                                        <String as Decode<Sqlite>>::decode(type_val)
+                                        <String as Decode<Postgres>>::decode(type_val)
                                 {
                                     let patch = scratch_patch::remove(scratch_id, &type_str);
                                     msg_store_for_preupdate.push_patch(patch);
@@ -164,11 +164,11 @@ impl EventService {
                         let rowid = hook.rowid;
                         runtime_handle.spawn(async move {
                             let record_type: RecordTypes = match (table, hook.operation.clone()) {
-                                (HookTables::Tasks, SqliteOperation::Delete)
-                                | (HookTables::Projects, SqliteOperation::Delete)
-                                | (HookTables::Workspaces, SqliteOperation::Delete)
-                                | (HookTables::ExecutionProcesses, SqliteOperation::Delete)
-                                | (HookTables::Scratch, SqliteOperation::Delete) => {
+                                (HookTables::Tasks, PostgresOperation::Delete)
+                                | (HookTables::Projects, PostgresOperation::Delete)
+                                | (HookTables::Workspaces, PostgresOperation::Delete)
+                                | (HookTables::ExecutionProcesses, PostgresOperation::Delete)
+                                | (HookTables::Scratch, PostgresOperation::Delete) => {
                                     // Deletions handled in preupdate hook for reliable data capture
                                     return;
                                 }
@@ -249,10 +249,10 @@ impl EventService {
                             };
 
                             let db_op: &str = match hook.operation {
-                                SqliteOperation::Insert => "insert",
-                                SqliteOperation::Delete => "delete",
-                                SqliteOperation::Update => "update",
-                                SqliteOperation::Unknown(_) => "unknown",
+                                PostgresOperation::Insert => "insert",
+                                PostgresOperation::Delete => "delete",
+                                PostgresOperation::Update => "update",
+                                PostgresOperation::Unknown(_) => "unknown",
                             };
 
                             // Handle task-related operations with direct patches
@@ -269,10 +269,10 @@ impl EventService {
                                             task_list.into_iter().find(|t| t.id == task.id)
                                     {
                                         let patch = match hook.operation {
-                                            SqliteOperation::Insert => {
+                                            PostgresOperation::Insert => {
                                                 task_patch::add(&task_with_status)
                                             }
-                                            SqliteOperation::Update => {
+                                            PostgresOperation::Update => {
                                                 task_patch::replace(&task_with_status)
                                             }
                                             _ => task_patch::replace(&task_with_status), // fallback
@@ -291,8 +291,8 @@ impl EventService {
                                 }
                                 RecordTypes::Project(project) => {
                                     let patch = match hook.operation {
-                                        SqliteOperation::Insert => project_patch::add(project),
-                                        SqliteOperation::Update => project_patch::replace(project),
+                                        PostgresOperation::Insert => project_patch::add(project),
+                                        PostgresOperation::Update => project_patch::replace(project),
                                         _ => project_patch::replace(project),
                                     };
                                     msg_store_for_hook.push_patch(patch);
@@ -300,8 +300,8 @@ impl EventService {
                                 }
                                 RecordTypes::Scratch(scratch) => {
                                     let patch = match hook.operation {
-                                        SqliteOperation::Insert => scratch_patch::add(scratch),
-                                        SqliteOperation::Update => scratch_patch::replace(scratch),
+                                        PostgresOperation::Insert => scratch_patch::add(scratch),
+                                        PostgresOperation::Update => scratch_patch::replace(scratch),
                                         _ => scratch_patch::replace(scratch),
                                     };
                                     msg_store_for_hook.push_patch(patch);
@@ -357,10 +357,10 @@ impl EventService {
                                 }
                                 RecordTypes::ExecutionProcess(process) => {
                                     let patch = match hook.operation {
-                                        SqliteOperation::Insert => {
+                                        PostgresOperation::Insert => {
                                             execution_process_patch::add(process)
                                         }
-                                        SqliteOperation::Update => {
+                                        PostgresOperation::Update => {
                                             execution_process_patch::replace(process)
                                         }
                                         _ => execution_process_patch::replace(process), // fallback
