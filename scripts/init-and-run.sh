@@ -30,23 +30,19 @@ if [ ! -f "$VK_DATA_DIR/opencode.json" ]; then
 EOF
 fi
 
-# Fix opencode CLI config - the desktop app creates incompatible config
-# We need to ensure CLI gets an empty config, not the desktop config
-if [ -L /root/.config/opencode ]; then
-  # It's already a symlink, check if target has desktop config
+# Fix opencode CLI config - remove config_version field that CLI doesn't recognize
+# Keep other settings (theme, editor, etc.) that user may have configured
+if [ -f /root/.config/opencode/config.json ]; then
   if grep -q '"config_version"' /root/.config/opencode/config.json 2>/dev/null; then
-    echo "Removing desktop opencode config..."
-    rm -f /root/.config/opencode/config.json
-    echo '{}' > /root/.config/opencode/config.json
-    chmod 444 /root/.config/opencode/config.json
+    echo "Fixing opencode config (removing config_version)..."
+    # Remove config_version field and related desktop-only fields
+    sed -i '/"config_version":/d' /root/.config/opencode/config.json
+    sed -i '/"disclaimer_acknowledged":/d' /root/.config/opencode/config.json
+    sed -i '/"onboarding_acknowledged":/d' /root/.config/opencode/config.json
+    sed -i '/"last_app_version":/d' /root/.config/opencode/config.json
+    sed -i '/"show_release_notes":/d' /root/.config/opencode/config.json
+    sed -i '/"showcases":/d' /root/.config/opencode/config.json
   fi
-elif [ -d /root/.config/opencode ]; then
-  # It's a directory (desktop config), replace with fixed version
-  echo "Fixing opencode CLI config..."
-  rm -rf /root/.config/opencode
-  mkdir -p /root/.config/opencode
-  echo '{}' > /root/.config/opencode/config.json
-  chmod 444 /root/.config/opencode/config.json
 fi
 
 cd /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban
