@@ -369,8 +369,9 @@ impl ExecutionProcess {
             "Finding latest coding agent turn session id for session {}",
             session_id
         );
-        let row = sqlx::query!(
-            r#"SELECT cat.agent_session_id
+        let row: Option<(String,)> = sqlx::query_as!(
+            (String,),
+            r#"SELECT cat.agent_session_id as "agent_session_id!"
                FROM execution_processes ep
                JOIN coding_agent_turns cat ON ep.id = cat.execution_process_id
                WHERE ep.session_id = $1
@@ -569,7 +570,8 @@ impl ExecutionProcess {
         boundary_process_id: Uuid,
         repo_id: Uuid,
     ) -> Result<Option<String>, sqlx::Error> {
-        let result = sqlx::query_scalar!(
+        let result: Option<Option<String>> = sqlx::query_scalar!(
+            Option<String>,
             r#"SELECT eprs.after_head_commit
                FROM execution_process_repo_states eprs
                JOIN execution_processes ep ON ep.id = eprs.execution_process_id

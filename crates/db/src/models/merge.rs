@@ -93,7 +93,7 @@ impl Merge {
         let id = Uuid::new_v4();
         let now = Utc::now();
 
-        sqlx::query_as!(
+        let row: MergeRow = sqlx::query_as!(
             MergeRow,
             r#"INSERT INTO merges (
                 id, workspace_id, repo_id, merge_type, merge_commit, created_at, target_branch_name
@@ -120,8 +120,8 @@ impl Merge {
             target_branch_name
         )
         .fetch_one(pool)
-        .await
-        .map(Into::into)
+        .await?;
+        Ok(row.into())
     }
     /// Create a new PR record (when PR is opened)
     pub async fn create_pr(
