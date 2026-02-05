@@ -29,6 +29,7 @@ if [ "$DAEMON_MODE" = true ]; then
         --name "$CONTAINER_NAME" \
         --privileged \
         -p "${PORT}:3000" \
+        --http-proxy=false \
         -e HOST=0.0.0.0 \
         -e PORT=3000 \
         -e VIBE_BACKEND_URL="http://localhost:${PORT}" \
@@ -50,6 +51,7 @@ else
         --name "$CONTAINER_NAME" \
         --privileged \
         -p "${PORT}:3000" \
+        --http-proxy=false \
         -e HOST=0.0.0.0 \
         -e PORT=3000 \
         -e VIBE_BACKEND_URL="http://localhost:${PORT}" \
