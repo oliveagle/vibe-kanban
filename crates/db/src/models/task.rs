@@ -373,7 +373,7 @@ ORDER BY t.created_at DESC"#,
     where
         E: Executor<'e, Database = Postgres>,
     {
-        let result = sqlx::query!(
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!(
             r#"UPDATE tasks
                SET shared_task_id = NULL
                WHERE project_id IN (
@@ -390,7 +390,7 @@ ORDER BY t.created_at DESC"#,
     where
         E: Executor<'e, Database = Postgres>,
     {
-        let result = sqlx::query!("DELETE FROM tasks WHERE id = $1", id)
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!("DELETE FROM tasks WHERE id = $1", id)
             .execute(executor)
             .await?;
         Ok(result.rows_affected())

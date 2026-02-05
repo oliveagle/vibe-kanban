@@ -43,6 +43,27 @@ pub struct RepoWithCopyFiles {
     pub copy_files: Option<String>,
 }
 
+/// Query row for find_repos_with_target_branch_for_workspace
+#[derive(Debug, Clone, FromRow)]
+pub struct WorkspaceRepoQueryRow {
+    pub id: Uuid,
+    pub path: String,
+    pub name: String,
+    pub display_name: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub target_branch: String,
+}
+
+/// Query row for find_repos_with_copy_files
+#[derive(Debug, Clone, FromRow)]
+pub struct RepoWithCopyFilesRow {
+    pub id: Uuid,
+    pub path: String,
+    pub name: String,
+    pub copy_files: Option<String>,
+}
+
 impl WorkspaceRepo {
     pub async fn create_many(
         pool: &PgPool,
@@ -122,7 +143,8 @@ impl WorkspaceRepo {
         pool: &PgPool,
         workspace_id: Uuid,
     ) -> Result<Vec<RepoWithTargetBranch>, sqlx::Error> {
-        let rows = sqlx::query!(
+        let rows: Vec<WorkspaceRepoQueryRow> = sqlx::query_as!(
+            WorkspaceRepoQueryRow,
             r#"SELECT r.id as "id!: Uuid",
                       r.path,
                       r.name,
@@ -200,7 +222,7 @@ impl WorkspaceRepo {
         old_branch: &str,
         new_branch: &str,
     ) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query!(
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!(
             r#"UPDATE workspace_repos
                SET target_branch = $1, updated_at = NOW()
                WHERE target_branch = $2
@@ -247,7 +269,8 @@ impl WorkspaceRepo {
         pool: &PgPool,
         workspace_id: Uuid,
     ) -> Result<Vec<RepoWithCopyFiles>, sqlx::Error> {
-        let rows = sqlx::query!(
+        let rows: Vec<RepoWithCopyFilesRow> = sqlx::query_as!(
+            RepoWithCopyFilesRow,
             r#"SELECT r.id as "id!: Uuid", r.path, r.name, pr.copy_files
                FROM repos r
                JOIN workspace_repos wr ON r.id = wr.repo_id
@@ -262,7 +285,7 @@ impl WorkspaceRepo {
 
         Ok(rows
             .into_iter()
-            .map(|row| RepoWithCopyFiles {
+            .map(|row: RepoWithCopyFilesRow| RepoWithCopyFiles {
                 id: row.id,
                 path: PathBuf::from(row.path),
                 name: row.name,

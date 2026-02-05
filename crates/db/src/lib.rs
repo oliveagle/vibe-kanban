@@ -2,7 +2,7 @@ use std::{env, sync::Arc, time::Duration};
 
 use sqlx::{
     Error, Pool, Postgres, PgPool,
-    postgres::{PgConnectOptions, PgPoolOptions},
+    postgres::PgPoolOptions,
 };
 
 pub mod models;
@@ -22,7 +22,7 @@ impl DBService {
             });
         
         let pool = PgPoolOptions::new()
-            .connect_timeout(DB_CONNECT_TIMEOUT)
+            .acquire_timeout(DB_CONNECT_TIMEOUT)
             .connect(&database_url)
             .await?;
         
@@ -32,7 +32,7 @@ impl DBService {
 
     pub async fn new_with_url(database_url: &str) -> Result<DBService, Error> {
         let pool = PgPoolOptions::new()
-            .connect_timeout(DB_CONNECT_TIMEOUT)
+            .acquire_timeout(DB_CONNECT_TIMEOUT)
             .connect(database_url)
             .await?;
         
