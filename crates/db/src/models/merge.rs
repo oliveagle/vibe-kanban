@@ -59,7 +59,7 @@ pub enum MergeType {
 }
 
 #[derive(FromRow)]
-struct MergeRow {
+pub struct MergeRow {
     id: Uuid,
     workspace_id: Uuid,
     repo_id: Uuid,

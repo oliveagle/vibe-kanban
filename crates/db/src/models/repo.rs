@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{Executor, FromRow, Sqlite, PgPool};
+use sqlx::{Executor, FromRow, Postgres, PgPool};
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
