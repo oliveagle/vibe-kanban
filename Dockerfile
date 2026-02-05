@@ -5,16 +5,21 @@
 # Contains all common tools: Rust, Node.js, podman, neovim, opencode
 #
 # Usage:
-#   Production: just container-build (uses this base)
-#   Development: just dev-build-all (pulls ghcr.io/oliveagle/vibe-kanban/base:v{version})
+#   Local build: podman build -f Dockerfile --target base -t vibe-kanban:base .
+#   GitHub Actions: Uses pre-built ghcr.io/oliveagle/vibe-kanban/base:v{version}
 #
 # Version History:
 #   v0.0.147 - Unified base image for prod and dev
 
 # ============================================
+# Arguments
+# ============================================
+ARG BASE_IMAGE=rust:1.80-slim-bookworm
+
+# ============================================
 # Base Image (Shared)
 # ============================================
-FROM rust:1.80-slim-bookworm AS base
+FROM ${BASE_IMAGE} AS base
 
 ARG USE_MIRROR=false
 

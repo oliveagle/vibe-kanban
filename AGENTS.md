@@ -98,7 +98,6 @@ just dev-ui --build   # Production build mode (recommended for external access)
 **Stop containers:**
 ```bash
 just dev-srv-stop
-just dev-ui-stop
 ```
 
 **Install coding agents (optional):**
@@ -108,9 +107,30 @@ just dev-install-agents   # Install Claude Code, Codex, Gemini CLI
 
 Coding agents are not installed by default to avoid slowing down container startup. Run this command manually after starting the container. The installation is persistent across container restarts.
 
-**Dev container options:**
-- Backend: `--network vibe-kanban-dev` for shared network
-- Frontend: `--build` flag for production mode with pre-built bundle
+### Production Deployment Commands
+
+**⚠️ Production images MUST be pulled from GHCR, never built locally**
+
+```bash
+# Pull production image from GHCR
+just prod-pull              # Pull default version (0.0.147)
+just prod-pull latest       # Pull latest tag
+just prod-pull 0.0.146      # Pull specific version
+
+# Start/stop production container
+just prod-up                # Pull (if needed) and start container
+just prod-down              # Stop container
+just prod-logs              # View container logs
+```
+
+**Production vs Development:**
+| Aspect | Development | Production |
+|--------|-------------|------------|
+| **Image Source** | Local build on top of GHCR base | Pulled from GHCR only |
+| **Build Command** | `just dev-build-all` | `just prod-pull` |
+| **Start Command** | `just dev-srv` | `just prod-up` |
+| **Hot Reload** | Yes (cargo-watch) | No |
+| **Port** | 3000 | 37825 (via docker-compose) |
 
 ## Coding Style & Naming Conventions
 - Rust: `rustfmt` enforced (`rustfmt.toml`); group imports by crate; snake_case modules, PascalCase types.
@@ -166,15 +186,38 @@ EOF
 
 ### GitHub Registry Images (Production)
 
+**⚠️ CRITICAL: Production images MUST be pulled from GHCR, never built locally**
+
+This ensures environment consistency and security. All production images are built by GitHub Actions with official sources.
+
 **Source Configuration: Use official sources only**
 - apt: Official Debian repositories
 - cargo/crates.io: Official registry
 - npm: Official registry.npmjs.org
 
 **Images:**
-- `ghcr.io/oliveagle/vibe-kanban/backend:latest` - Backend API only. **Note**: Compiled with placeholder HTML if frontend/dist missing. Serves API on port 3000.
-- `ghcr.io/oliveagle/vibe-kanban/frontend:latest` - Frontend static files only. Nginx serves on port 80, proxies `/api` to backend service.
-- **Must deploy together**: Frontend container proxies API requests to backend container via docker-compose internal network.
+- `ghcr.io/oliveagle/vibe-kanban/base:v{version}` - Base image with all tools (shared between prod and dev)
+- `ghcr.io/oliveagle/vibe-kanban/backend:latest` - Production backend with embedded frontend
+- `ghcr.io/oliveagle/vibe-kanban/backend:v{version}` - Versioned production backend
+
+**Production Deployment Commands:**
+```bash
+# Pull and run production image (recommended)
+just prod-up
+
+# Or manually:
+just prod-pull [version]    # Pull specific version (default: 0.0.147)
+just prod-pull latest       # Pull latest tag
+just prod-up                # Start container
+just prod-down              # Stop container
+just prod-logs              # View logs
+```
+
+**Why no local production builds?**
+- Ensures all production deployments use identical, tested images
+- Prevents "works on my machine" issues
+- Security: Only CI/CD pipeline can create production images
+- Traceability: Every production image has a Git commit SHA
 
 ### Development Images (Dockerfile.dev)
 
@@ -186,7 +229,7 @@ EOF
 **Images:**
 - `vibe-kanban:dev-base-v{version}` - Base layer with Rust + system deps + mirrors
 - `vibe-kanban:dev-runtime-v{version}` - Runtime layer with cargo-watch + proxy config
-- `vibe-kanban:local` - Combined production-like image. Use `just container-build` to create.
+- `vibe-kanban:local` - Production image pulled from GHCR (via `just prod-pull`)
 
 ### Agent Detection in Containers
 - opencode requires `/root/.config/opencode/opencode.json` or `/root/.config/opencode/` directory to be detected as "installed".

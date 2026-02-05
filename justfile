@@ -166,31 +166,57 @@ generate-types:
     npm run generate-types
 
 # ===========================================
-# LOCAL PRODUCTION DEPLOYMENT (Docker/Podman)
+# PRODUCTION DEPLOYMENT (Pull from GHCR only)
 # ===========================================
+# 生产镜像必须从 GitHub Container Registry 拉取
+# 不允许本地构建，确保环境一致性
 
-# 构建生产容器镜像 (单一后端镜像，包含嵌入的前端)
-container-build:
+# 拉取生产镜像 (从 GHCR)
+# Usage: just prod-pull [version]  # 默认版本为 0.0.147
+prod-pull version="0.0.147":
     #!/usr/bin/env bash
-    echo "Building frontend for embedding..."
-    (cd frontend && pnpm run build)
-    echo "Building unified container image (backend + embedded frontend)..."
-    podman build -f Dockerfile.backend -t vibe-kanban:local .
-    echo "✅ Build complete: vibe-kanban:local (backend with embedded frontend)"
+    VERSION="{{version}}"
+    echo "Pulling production image from GHCR..."
+    echo "Version: $VERSION"
+    echo ""
+    
+    echo "📦 Pulling backend image..."
+    if ! podman pull ghcr.io/oliveagle/vibe-kanban/backend:$VERSION 2>&1; then
+        echo "❌ Failed to pull production image"
+        echo ""
+        echo "Options:"
+        echo "  1. Check your network connection"
+        echo "  2. Verify version exists: ghcr.io/oliveagle/vibe-kanban/backend:$VERSION"
+        echo "  3. Use 'latest' tag: just prod-pull latest"
+        echo ""
+        exit 1
+    fi
+    
+    # Tag as local for docker-compose compatibility
+    podman tag ghcr.io/oliveagle/vibe-kanban/backend:$VERSION vibe-kanban:local
+    
+    echo ""
+    echo "✅ Production image ready: vibe-kanban:local (from $VERSION)"
 
 # 启动生产容器
-up:
+prod-up:
     #!/usr/bin/env bash
+    # Check if image exists, if not pull it
+    if ! podman images | grep -q "vibe-kanban.*local"; then
+        echo "Production image not found, pulling from GHCR..."
+        just prod-pull
+    fi
+    
     echo "Starting vibe-kanban production container..."
     podman compose -f docker-compose.local.yml up -d
     echo "✅ Container started on http://localhost:37825"
 
 # 停止生产容器
-down:
+prod-down:
     podman compose -f docker-compose.local.yml down
 
-# 查看容器日志
-logs-container:
+# 查看生产容器日志
+prod-logs:
     podman compose -f docker-compose.local.yml logs -f
 
 # ===========================================

@@ -1,8 +1,7 @@
 services:
   vibe-kanban:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
+    # 生产镜像必须从 GHCR 拉取，不允许本地构建
+    # 使用 just prod-pull 拉取镜像后再启动
     image: vibe-kanban:local
     container_name: vibe-kanban
     user: "0:0"
