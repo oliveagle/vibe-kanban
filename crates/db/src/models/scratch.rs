@@ -58,7 +58,7 @@ impl ScratchPayload {
 }
 
 #[derive(Debug, Clone, FromRow)]
-struct ScratchRow {
+pub struct ScratchRow {
     pub id: Uuid,
     pub scratch_type: String,
     pub payload: String,

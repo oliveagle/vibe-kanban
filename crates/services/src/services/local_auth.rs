@@ -8,8 +8,8 @@ use chrono::{DateTime, Duration, Utc};
 use db::DBService;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use sqlx::sqlite::SqliteRow;
-use sqlx::{Row, SqlitePool};
+use sqlx::sqlite::PostgresRow;
+use sqlx::{Row, PgPool};
 use thiserror::Error;
 use tracing;
 use uuid::Uuid;
@@ -70,7 +70,7 @@ pub struct AuthResponse {
 /// Local authentication service
 #[derive(Clone)]
 pub struct LocalAuthService {
-    pool: SqlitePool,
+    pool: PgPool,
     jwt_secret: String,
 }
 
@@ -171,7 +171,7 @@ impl LocalAuthService {
         password: &str,
     ) -> Result<AuthResponse, LocalAuthError> {
         // Fetch user
-        let row: Option<SqliteRow> = sqlx::query(
+        let row: Option<PostgresRow> = sqlx::query(
             "SELECT id, username, password_hash, created_at FROM local_users WHERE username = ?"
         )
         .bind(username)

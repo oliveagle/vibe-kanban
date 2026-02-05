@@ -65,6 +65,23 @@ pub struct TaskRelationships {
     pub children: Vec<Task>,       // Tasks created from this workspace
 }
 
+/// Query row for find_by_project_id_with_attempt_status
+#[derive(Debug, Clone, FromRow)]
+pub struct TaskWithStatusRow {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub title: String,
+    pub description: Option<String>,
+    pub status: TaskStatus,
+    pub parent_workspace_id: Option<Uuid>,
+    pub shared_task_id: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub has_in_progress_attempt: i64,
+    pub last_attempt_failed: i64,
+    pub executor: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct CreateTask {
     pub project_id: Uuid,
@@ -138,7 +155,8 @@ impl Task {
         pool: &PgPool,
         project_id: Uuid,
     ) -> Result<Vec<TaskWithAttemptStatus>, sqlx::Error> {
-        let records = sqlx::query!(
+        let records: Vec<TaskWithStatusRow> = sqlx::query_as!(
+            TaskWithStatusRow,
             r#"SELECT
   t.id                            AS "id!: Uuid",
   t.project_id                    AS "project_id!: Uuid",

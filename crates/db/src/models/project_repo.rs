@@ -220,7 +220,7 @@ impl ProjectRepo {
     }
 
     pub async fn create(
-        executor: impl sqlx::Executor<'_, Database = sqlx::Sqlite>,
+        executor: impl sqlx::Executor<'_, Database = Postgres>,
         project_id: Uuid,
         repo_id: Uuid,
     ) -> Result<Self, sqlx::Error> {
