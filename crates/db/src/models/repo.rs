@@ -117,7 +117,7 @@ impl Repo {
     }
 
     pub async fn delete_orphaned(pool: &PgPool) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query!(
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!(
             r#"DELETE FROM repos
                WHERE id NOT IN (SELECT repo_id FROM project_repos)
                  AND id NOT IN (SELECT repo_id FROM workspace_repos)"#

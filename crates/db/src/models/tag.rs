@@ -91,7 +91,7 @@ impl Tag {
     }
 
     pub async fn delete(pool: &PgPool, id: Uuid) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query!("DELETE FROM tags WHERE id = $1", id)
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!("DELETE FROM tags WHERE id = $1", id)
             .execute(pool)
             .await?;
         Ok(result.rows_affected())

@@ -108,7 +108,7 @@ pub enum ExecutorActionField {
     Other(Value),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, FromRow)]
 pub struct MissingBeforeContext {
     pub id: Uuid,
     pub session_id: Uuid,
@@ -148,7 +148,8 @@ impl ExecutionProcess {
     pub async fn list_missing_before_context(
         pool: &PgPool,
     ) -> Result<Vec<MissingBeforeContext>, sqlx::Error> {
-        let rows = sqlx::query!(
+        let rows: Vec<MissingBeforeContext> = sqlx::query_as!(
+            MissingBeforeContext,
             r#"SELECT
                 ep.id                         as "id!: Uuid",
                 ep.session_id                 as "session_id!: Uuid",
@@ -546,7 +547,7 @@ impl ExecutionProcess {
         session_id: Uuid,
         boundary_process_id: Uuid,
     ) -> Result<i64, sqlx::Error> {
-        let result = sqlx::query!(
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!(
             r#"UPDATE execution_processes
                SET dropped = TRUE
              WHERE session_id = $1

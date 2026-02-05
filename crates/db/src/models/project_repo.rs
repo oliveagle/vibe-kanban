@@ -204,7 +204,7 @@ impl ProjectRepo {
         project_id: Uuid,
         repo_id: Uuid,
     ) -> Result<(), ProjectRepoError> {
-        let result = sqlx::query!(
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!(
             "DELETE FROM project_repos WHERE project_id = $1 AND repo_id = $2",
             project_id,
             repo_id

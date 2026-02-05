@@ -238,7 +238,7 @@ impl Scratch {
         scratch_type: &ScratchType,
     ) -> Result<u64, sqlx::Error> {
         let scratch_type_str = scratch_type.to_string();
-        let result = sqlx::query!(
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!(
             "DELETE FROM scratch WHERE id = $1 AND scratch_type = $2",
             id,
             scratch_type_str

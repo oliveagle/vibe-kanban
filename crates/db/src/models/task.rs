@@ -355,7 +355,7 @@ ORDER BY t.created_at DESC"#,
     where
         E: Executor<'e, Database = Postgres>,
     {
-        let result = sqlx::query!(
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!(
             "UPDATE tasks SET parent_workspace_id = NULL WHERE parent_workspace_id = $1",
             workspace_id
         )
