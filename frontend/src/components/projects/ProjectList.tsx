@@ -49,8 +49,19 @@ export function ProjectList() {
   }, [projects, focusedProjectId]);
 
   return (
-    <div className="h-full flex gap-6 p-8 overflow-hidden">
-      {/* Left Column - Project List */}
+    <div className="h-full flex flex-col gap-6 p-8 overflow-hidden lg:flex-row">
+      {/* Live Feed - Top section for mobile, left column for desktop */}
+      <div className="w-full lg:w-80 lg:flex-shrink-0 xl:w-96">
+        <div className="lg:hidden mb-4">
+          <div className="text-lg font-semibold text-foreground mb-2 flex items-center gap-2">
+            <Clock className="w-5 h-5 text-blue-500" />
+            Live Feed
+          </div>
+        </div>
+        <LiveFeed />
+      </div>
+
+      {/* Project List - Bottom section for mobile, right column for desktop */}
       <div className="flex-1 space-y-6 overflow-auto min-w-0">
         <div className="flex justify-between items-center">
           <div>
@@ -106,11 +117,6 @@ export function ProjectList() {
             ))}
           </div>
         )}
-      </div>
-
-      {/* Right Column - Live Feed */}
-      <div className="w-80 flex-shrink-0 hidden lg:block">
-        <LiveFeed />
       </div>
     </div>
   );
