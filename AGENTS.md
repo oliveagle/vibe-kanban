@@ -113,15 +113,24 @@ Coding agents are not installed by default to avoid slowing down container start
 
 ```bash
 # Pull production image from GHCR
-just prod-pull              # Pull default version (0.0.147)
-just prod-pull latest       # Pull latest tag
-just prod-pull 0.0.146      # Pull specific version
+just prod-pull              # Pull dev branch build (default)
+just prod-pull latest       # Pull latest release
+just prod-pull 0.0.147      # Pull specific version
+just prod-wait-pull dev 30  # Wait for GitHub Actions build and pull
 
 # Start/stop production container
 just prod-up                # Pull (if needed) and start container
 just prod-down              # Stop container
 just prod-logs              # View container logs
 ```
+
+**Available Image Tags:**
+| Tag | Description |
+|-----|-------------|
+| `dev` | Latest dev branch build (default) |
+| `latest` | Latest release |
+| `0.0.147` | Specific version (only for releases) |
+| `<commit-sha>` | Specific commit build |
 
 **Production vs Development:**
 | Aspect | Development | Production |
@@ -206,12 +215,20 @@ This ensures environment consistency and security. All production images are bui
 just prod-up
 
 # Or manually:
-just prod-pull [version]    # Pull specific version (default: 0.0.147)
-just prod-pull latest       # Pull latest tag
+just prod-pull [tag]        # Pull specific tag (default: dev)
+just prod-pull latest       # Pull latest release
+just prod-pull 0.0.147      # Pull specific version
+just prod-wait-pull dev 30  # Wait for GitHub Actions and pull
 just prod-up                # Start container
 just prod-down              # Stop container
 just prod-logs              # View logs
 ```
+
+**Image Tags:**
+- `dev` - Latest dev branch build (default for `just prod-pull`)
+- `latest` - Latest release
+- `0.0.147` - Specific version (only created for release tags)
+- `<commit-sha>` - Specific commit build
 
 **Why no local production builds?**
 - Ensures all production deployments use identical, tested images

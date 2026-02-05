@@ -172,31 +172,39 @@ generate-types:
 # 不允许本地构建，确保环境一致性
 
 # 拉取生产镜像 (从 GHCR)
-# Usage: just prod-pull [version]  # 默认版本为 0.0.147
-prod-pull version="0.0.147":
+# Usage: just prod-pull [tag]
+# 
+# Available tags:
+#   - dev: latest dev branch build (default)
+#   - latest: latest release
+#   - 0.0.147: specific version
+#   - <commit-sha>: specific commit
+#
+# Example: just prod-pull latest
+prod-pull tag="dev":
     #!/usr/bin/env bash
-    VERSION="{{version}}"
+    TAG="{{tag}}"
     echo "Pulling production image from GHCR..."
-    echo "Version: $VERSION"
+    echo "Tag: $TAG"
     echo ""
     
     echo "📦 Pulling backend image..."
-    if ! podman pull ghcr.io/oliveagle/vibe-kanban/backend:$VERSION 2>&1; then
+    if ! podman pull ghcr.io/oliveagle/vibe-kanban/backend:$TAG 2>&1; then
         echo "❌ Failed to pull production image"
         echo ""
-        echo "Options:"
-        echo "  1. Check your network connection"
-        echo "  2. Verify version exists: ghcr.io/oliveagle/vibe-kanban/backend:$VERSION"
-        echo "  3. Use 'latest' tag: just prod-pull latest"
+        echo "Available tags:"
+        echo "  - dev: latest dev branch build"
+        echo "  - latest: latest release"
+        echo "  - <version>: specific release (e.g., 0.0.147)"
         echo ""
         exit 1
     fi
     
     # Tag as local for docker-compose compatibility
-    podman tag ghcr.io/oliveagle/vibe-kanban/backend:$VERSION vibe-kanban:local
+    podman tag ghcr.io/oliveagle/vibe-kanban/backend:$TAG vibe-kanban:local
     
     echo ""
-    echo "✅ Production image ready: vibe-kanban:local (from $VERSION)"
+    echo "✅ Production image ready: vibe-kanban:local (from $TAG)"
 
 # 启动生产容器
 prod-up:
@@ -220,13 +228,20 @@ prod-logs:
     podman compose -f docker-compose.local.yml logs -f
 
 # 等待 GitHub Actions 构建完成并拉取镜像
-# Usage: just prod-wait-pull [version] [timeout_minutes]
-# Example: just prod-wait-pull 0.0.148 30
-prod-wait-pull version="0.0.147" timeout="30":
+# Usage: just prod-wait-pull [tag] [timeout_minutes]
+# 
+# Available tags:
+#   - dev: latest dev branch build
+#   - latest: latest release
+#   - 0.0.147: specific version (only for release tags)
+#   - <commit-sha>: specific commit
+#
+# Example: just prod-wait-pull dev 30
+prod-wait-pull tag="dev" timeout="30":
     #!/usr/bin/env bash
-    VERSION="{{version}}"
+    TAG="{{tag}}"
     TIMEOUT_MIN={{timeout}}
-    IMAGE="ghcr.io/oliveagle/vibe-kanban/backend:$VERSION"
+    IMAGE="ghcr.io/oliveagle/vibe-kanban/backend:$TAG"
     
     echo "⏳ Waiting for GitHub Actions to build image..."
     echo "Image: $IMAGE"
@@ -245,6 +260,11 @@ prod-wait-pull version="0.0.147" timeout="30":
             echo ""
             echo "❌ Timeout after ${TIMEOUT_MIN} minutes"
             echo "Image not available: $IMAGE"
+            echo ""
+            echo "Available tags on GHCR:"
+            echo "  - dev: latest dev branch build"
+            echo "  - latest: latest release"
+            echo "  - <version>: specific release (e.g., 0.0.147)"
             exit 1
         fi
         
