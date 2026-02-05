@@ -6,11 +6,15 @@ echo 'root:100000:65536' > /etc/subuid
 echo 'root:100000:65536' > /etc/subgid
 
 VK_DATA_DIR="/root/.local/share/vibe-kanban"
-mkdir -p "$VK_DATA_DIR"
+AGENTS_DIR="$VK_DATA_DIR/agents"
+CACHE_DIR="$VK_DATA_DIR/cache"
 
-# Create MCP config for opencode
+mkdir -p "$VK_DATA_DIR"
+mkdir -p "$AGENTS_DIR/opencode"
+mkdir -p "$CACHE_DIR/npm"
+
+# Create MCP config for opencode in VK data directory
 if [ ! -f "$VK_DATA_DIR/opencode.json" ]; then
-  echo "Creating default opencode MCP config..."
   cat > "$VK_DATA_DIR/opencode.json" << 'EOF'
 {
   "$schema": "https://opencode.ai/config.json",
@@ -30,19 +34,34 @@ if [ ! -f "$VK_DATA_DIR/opencode.json" ]; then
 EOF
 fi
 
-# Fix opencode CLI config - remove config_version field that CLI doesn't recognize
-# Keep other settings (theme, editor, etc.) that user may have configured
+# Link MCP config to opencode agent directory
+if [ ! -L "$AGENTS_DIR/opencode/mcp.json" ]; then
+  ln -sf "$VK_DATA_DIR/opencode.json" "$AGENTS_DIR/opencode/mcp.json"
+fi
+
+# Create opencode CLI config in VK directory (remove incompatible fields from desktop config)
+OPENCODE_CONFIG="$AGENTS_DIR/opencode/config.json"
 if [ -f /root/.config/opencode/config.json ]; then
   if grep -q '"config_version"' /root/.config/opencode/config.json 2>/dev/null; then
-    echo "Fixing opencode config (removing config_version)..."
-    # Remove config_version field and related desktop-only fields
-    sed -i '/"config_version":/d' /root/.config/opencode/config.json
-    sed -i '/"disclaimer_acknowledged":/d' /root/.config/opencode/config.json
-    sed -i '/"onboarding_acknowledged":/d' /root/.config/opencode/config.json
-    sed -i '/"last_app_version":/d' /root/.config/opencode/config.json
-    sed -i '/"show_release_notes":/d' /root/.config/opencode/config.json
-    sed -i '/"showcases":/d' /root/.config/opencode/config.json
+    sed -e '/"config_version":/d' \
+        -e '/"disclaimer_acknowledged":/d' \
+        -e '/"onboarding_acknowledged":/d' \
+        -e '/"last_app_version":/d' \
+        -e '/"show_release_notes":/d' \
+        -e '/"showcases":/d' \
+        /root/.config/opencode/config.json > "$OPENCODE_CONFIG"
+  else
+    cp /root/.config/opencode/config.json "$OPENCODE_CONFIG"
   fi
+elif [ ! -f "$OPENCODE_CONFIG" ]; then
+  echo '{}' > "$OPENCODE_CONFIG"
+fi
+
+# Create symlinks from standard locations to VK directory
+mkdir -p /root/.config
+if [ ! -L /root/.config/opencode ]; then
+  rm -rf /root/.config/opencode
+  ln -sf "$AGENTS_DIR/opencode" /root/.config/opencode
 fi
 
 cd /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban

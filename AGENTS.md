@@ -208,6 +208,33 @@ Containers mount host directories for persistence. This applies to both developm
 - `/mnt/volume3/data` → `/mnt/volume3/data` (repositories)
 - `/run/user/1000/podman/podman.sock` → `/var/run/docker.sock` (container socket)
 
+**Data Directory Structure:**
+
+All configuration is organized under `$HOME/.local/share/vibe-kanban/`:
+
+```
+$HOME/.local/share/vibe-kanban/
+├── db.sqlite                    # VK database
+├── config.json                  # VK configuration
+├── credentials.json             # VK credentials
+├── opencode.json                # MCP configuration for opencode
+│
+├── agents/                      # Agent-specific configurations
+│   └── opencode/                # Opencode configuration
+│       ├── config.json          # CLI configuration (auto-fixed from desktop)
+│       └── mcp.json             # MCP configuration (symlink to ../../opencode.json)
+│
+└── cache/                       # Cache directories
+    └── npm/                     # NPM cache
+```
+
+**Symlink Strategy:**
+
+Standard agent config paths are symlinked to the VK data directory:
+- `/root/.config/opencode` → `$VK_DATA_DIR/agents/opencode`
+
+This ensures all persistent data is within the mounted volume for backup and migration.
+
 **⚠️ SYMLINK RESTRICTION:**
 Files or directories in `$HOME/.local/share/vibe-kanban/` that are symlinks pointing **outside** this directory will **NOT work** inside the container. The container can only access paths within the mounted volume.
 
