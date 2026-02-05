@@ -173,14 +173,21 @@ impl Deployment for LocalDeployment {
         let local_auth_enabled = std::env::var("ENABLE_LOCAL_AUTH")
             .map(|v| v == "true" || v == "1")
             .unwrap_or(true);
-        
+
         if local_auth_enabled {
             if let Err(e) = local_auth.initialize().await {
                 tracing::warn!(?e, "Failed to initialize local auth service");
             } else {
-                let (username, password) = services::services::local_auth::LocalAuthService::get_default_credentials();
-                tracing::info!("Local authentication enabled. Configure credentials using AUTH_USERNAME and AUTH_PASSWORD environment variables");
-                tracing::info!("Current credentials - Username: {}, Password: {}", username, password);
+                let (username, password) =
+                    services::services::local_auth::LocalAuthService::get_default_credentials();
+                tracing::info!(
+                    "Local authentication enabled. Configure credentials using AUTH_USERNAME and AUTH_PASSWORD environment variables"
+                );
+                tracing::info!(
+                    "Current credentials - Username: {}, Password: {}",
+                    username,
+                    password
+                );
             }
         }
 

@@ -242,12 +242,12 @@ fn adapt_opencode(servers: ServerMap, meta: Option<Value>) -> Value {
             new_map.insert("type".to_string(), Value::String("local".to_string()));
             new_map.insert("command".to_string(), Value::Array(cmd_vec));
             new_map.insert("enabled".to_string(), Value::Bool(true));
-            
+
             // Preserve env field if present
             if let Some(env) = s.get("env") {
                 new_map.insert("env".to_string(), env.clone());
             }
-            
+
             *s = new_map;
         }
     }
@@ -318,13 +318,22 @@ impl CodingAgent {
 
         match self {
             CodingAgent::Opencode(_) => {
-                format!("{}\n\nOpencode-specific: When you need to manage containers, use the MCP tools exposed by the vibe_kanban server. Check available tools with /tools if unsure.", base_prompt)
+                format!(
+                    "{}\n\nOpencode-specific: When you need to manage containers, use the MCP tools exposed by the vibe_kanban server. Check available tools with /tools if unsure.",
+                    base_prompt
+                )
             }
             CodingAgent::ClaudeCode(_) => {
-                format!("{}\n\nClaude Code-specific: You have access to container management through MCP. Always prefer MCP tools over shell commands for container operations.", base_prompt)
+                format!(
+                    "{}\n\nClaude Code-specific: You have access to container management through MCP. Always prefer MCP tools over shell commands for container operations.",
+                    base_prompt
+                )
             }
             CodingAgent::Codex(_) => {
-                format!("{}\n\nCodex-specific: Use the MCP server for container operations. Do not execute podman/docker commands in the terminal.", base_prompt)
+                format!(
+                    "{}\n\nCodex-specific: Use the MCP server for container operations. Do not execute podman/docker commands in the terminal.",
+                    base_prompt
+                )
             }
             _ => base_prompt.to_string(),
         }

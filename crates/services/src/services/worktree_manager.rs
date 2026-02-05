@@ -136,10 +136,17 @@ impl WorktreeManager {
         let branch_name_for_create = branch_name_owned.clone();
         tokio::task::spawn_blocking(move || -> Result<(), WorktreeError> {
             let repo = Repository::open(&repo_path_owned).map_err(WorktreeError::Git)?;
-            let branch_exists = repo.find_branch(&branch_name_for_create, git2::BranchType::Local).is_ok()
-                || repo.find_branch(&branch_name_for_create, git2::BranchType::Remote).is_ok();
+            let branch_exists = repo
+                .find_branch(&branch_name_for_create, git2::BranchType::Local)
+                .is_ok()
+                || repo
+                    .find_branch(&branch_name_for_create, git2::BranchType::Remote)
+                    .is_ok();
             if !branch_exists {
-                info!("Branch {} does not exist, creating from HEAD", branch_name_for_create);
+                info!(
+                    "Branch {} does not exist, creating from HEAD",
+                    branch_name_for_create
+                );
                 let head_ref = repo.head().map_err(WorktreeError::Git)?;
                 let head_commit = head_ref.peel_to_commit().map_err(WorktreeError::Git)?;
                 repo.branch(&branch_name_for_create, &head_commit, false)

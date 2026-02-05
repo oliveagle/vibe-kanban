@@ -253,7 +253,9 @@ pub struct GetTaskResponse {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct PullImageRequest {
-    #[schemars(description = "Docker image name to pull, e.g., 'nginx:alpine' or 'docker.io/library/nginx:1.25.3-alpine'")]
+    #[schemars(
+        description = "Docker image name to pull, e.g., 'nginx:alpine' or 'docker.io/library/nginx:1.25.3-alpine'"
+    )]
     pub image: String,
 }
 
@@ -821,19 +823,17 @@ impl TaskServer {
         TaskServer::success(&response)
     }
 
-    #[tool(
-        description = "Pull a Docker image from registry. \
+    #[tool(description = "Pull a Docker image from registry. \
         CRITICAL: ALWAYS use this tool instead of 'podman pull' or 'docker pull' commands. \
         This tool uses Vibe Kanban's configured proxy settings to solve network connectivity issues. \
-        Direct podman pull may fail due to network restrictions, but this tool will work."
-    )]
+        Direct podman pull may fail due to network restrictions, but this tool will work.")]
     async fn pull_image(
         &self,
         Parameters(PullImageRequest { image }): Parameters<PullImageRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         let url = self.url("/api/orchestration/images/pull");
         let body = serde_json::json!({ "image": image });
-        
+
         let result: String = match self.send_json(self.client.post(&url).json(&body)).await {
             Ok(r) => r,
             Err(e) => return Ok(e),

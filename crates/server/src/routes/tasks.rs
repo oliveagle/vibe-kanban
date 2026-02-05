@@ -16,7 +16,7 @@ use db::models::{
     image::TaskImage,
     project::{Project, ProjectError},
     repo::Repo,
-    task::{CreateTask, Task, TaskWithAttemptStatus, UpdateTask},
+    task::{BulkDeleteTasks, BulkUpdateTasks, CreateTask, Task, TaskWithAttemptStatus, UpdateTask},
     workspace::{CreateWorkspace, Workspace},
     workspace_repo::{CreateWorkspaceRepo, WorkspaceRepo},
 };
@@ -433,6 +433,200 @@ pub struct ShareTaskResponse {
     pub shared_task_id: Uuid,
 }
 
+pub async fn bulk_update_tasks(
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<BulkUpdateTasks>,
+) -> Result<ResponseJson<ApiResponse<u64>>, ApiError> {
+    if payload.task_ids.is_empty() {
+        return Err(ApiError::BadRequest("No task IDs provided".to_string()));
+    }
+
+    // Check for running processes if we're not just updating titles/descriptions
+    if payload.status.is_some() {
+        let tasks_with_running =
+            Task::bulk_check_running_processes(&deployment.db().pool, &payload.task_ids).await?;
+        if !tasks_with_running.is_empty() {
+            return Err(ApiError::Conflict(format!(
+                "Cannot update status for {} tasks with running execution processes. Please wait for them to complete or stop them first.",
+                tasks_with_running.len()
+            )));
+        }
+    }
+
+    let mut tx = deployment.db().pool.begin().await?;
+
+    let affected_rows = Task::bulk_update(&mut *tx, &payload).await?;
+
+    // Handle shared task updates if any
+    let updated_tasks: Result<Vec<Task>, _> = futures::future::join_all(
+        payload
+            .task_ids
+            .iter()
+            .map(|&id| Task::find_by_id(&deployment.db().pool, id)),
+    )
+    .await
+    .into_iter()
+    .collect();
+
+    if let Ok(tasks) = updated_tasks {
+        if let Ok(publisher) = deployment.share_publisher() {
+            for task in tasks {
+                if let Some(task) = task {
+                    if task.shared_task_id.is_some() {
+                        if let Err(e) = publisher.update_shared_task(&task).await {
+                            tracing::warn!(
+                                "Failed to broadcast shared task update for {}: {}",
+                                task.id,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    tx.commit().await?;
+
+    deployment
+        .track_if_analytics_allowed(
+            "bulk_tasks_updated",
+            serde_json::json!({
+                "task_count": payload.task_ids.len(),
+                "status_updated": payload.status.is_some(),
+                "title_updated": payload.title.is_some(),
+                "description_updated": payload.description.is_some(),
+            }),
+        )
+        .await;
+
+    Ok(ResponseJson(ApiResponse::success(affected_rows)))
+}
+
+pub async fn bulk_delete_tasks(
+    State(deployment): State<DeploymentImpl>,
+    Json(payload): Json<BulkDeleteTasks>,
+) -> Result<ResponseJson<ApiResponse<u64>>, ApiError> {
+    if payload.task_ids.is_empty() {
+        return Err(ApiError::BadRequest("No task IDs provided".to_string()));
+    }
+
+    // Check for running processes on all tasks
+    let tasks_with_running =
+        Task::bulk_check_running_processes(&deployment.db().pool, &payload.task_ids).await?;
+    if !tasks_with_running.is_empty() {
+        return Err(ApiError::Conflict(format!(
+            "Cannot delete {} tasks with running execution processes. Please wait for them to complete or stop them first.",
+            tasks_with_running.len()
+        )));
+    }
+
+    // Gather task attempts data needed for background cleanup
+    let attempts = Workspace::fetch_all_bulk(&deployment.db().pool, &payload.task_ids)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to fetch task attempts for bulk delete: {}", e);
+            ApiError::Workspace(e)
+        })?;
+
+    let repositories =
+        WorkspaceRepo::find_unique_repos_for_tasks(&deployment.db().pool, &payload.task_ids)
+            .await?;
+
+    // Collect workspace directories that need cleanup
+    let workspace_dirs: Vec<PathBuf> = attempts
+        .iter()
+        .filter_map(|attempt| attempt.container_ref.as_ref().map(PathBuf::from))
+        .collect();
+
+    // Check for shared tasks
+    let tasks: Result<Vec<Task>, _> = futures::future::join_all(
+        payload
+            .task_ids
+            .iter()
+            .map(|&id| Task::find_by_id(&deployment.db().pool, id)),
+    )
+    .await
+    .into_iter()
+    .collect();
+
+    if let Ok(tasks) = tasks {
+        if let Ok(publisher) = deployment.share_publisher() {
+            for task in tasks {
+                if let Some(task) = task {
+                    if let Some(shared_task_id) = task.shared_task_id {
+                        if let Err(e) = publisher.delete_shared_task(shared_task_id).await {
+                            tracing::warn!(
+                                "Failed to broadcast shared task deletion for {}: {}",
+                                task.id,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut tx = deployment.db().pool.begin().await?;
+
+    // Nullify parent_workspace_id for child tasks
+    let mut total_children_affected = 0u64;
+    for attempt in &attempts {
+        let children_affected =
+            Task::nullify_children_by_workspace_id(&mut *tx, attempt.id).await?;
+        total_children_affected += children_affected;
+    }
+
+    let affected_rows = Task::bulk_delete(&mut *tx, &payload.task_ids).await?;
+    tx.commit().await?;
+
+    deployment
+        .track_if_analytics_allowed(
+            "bulk_tasks_deleted",
+            serde_json::json!({
+                "task_count": payload.task_ids.len(),
+                "attempt_count": attempts.len(),
+                "workspace_dirs_count": workspace_dirs.len(),
+            }),
+        )
+        .await;
+
+    let pool = deployment.db().pool.clone();
+    tokio::spawn(async move {
+        tracing::info!(
+            "Starting background cleanup for bulk deleted tasks ({} workspaces, {} repos)",
+            workspace_dirs.len(),
+            repositories.len()
+        );
+
+        for workspace_dir in &workspace_dirs {
+            if let Err(e) = WorkspaceManager::cleanup_workspace(workspace_dir, &repositories).await
+            {
+                tracing::error!(
+                    "Background workspace cleanup failed for bulk deleted tasks at {}: {}",
+                    workspace_dir.display(),
+                    e
+                );
+            }
+        }
+
+        match Repo::delete_orphaned(&pool).await {
+            Ok(count) if count > 0 => {
+                tracing::info!("Deleted {} orphaned repo records", count);
+            }
+            Err(e) => {
+                tracing::error!("Failed to delete orphaned repos: {}", e);
+            }
+            _ => {}
+        }
+
+        tracing::info!("Background cleanup completed for bulk deleted tasks");
+    });
+
+    Ok(ResponseJson(ApiResponse::success(affected_rows)))
+}
+
 pub async fn share_task(
     Extension(task): Extension<Task>,
     State(deployment): State<DeploymentImpl>,
@@ -473,6 +667,8 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
 
     let inner = Router::new()
         .route("/", get(get_tasks).post(create_task))
+        .route("/bulk-update", post(bulk_update_tasks))
+        .route("/bulk-delete", post(bulk_delete_tasks))
         .route("/stream/ws", get(stream_tasks_ws))
         .route("/create-and-start", post(create_task_and_start))
         .nest("/{task_id}", task_id_router);

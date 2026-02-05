@@ -13,8 +13,7 @@ use crate::{
     env::ExecutionEnv,
     executors::{
         AppendPrompt, AvailabilityInfo, CodingAgent, ExecutorError, SpawnedChild,
-        StandardCodingAgentExecutor,
-        acp::AcpAgentHarness,
+        StandardCodingAgentExecutor, acp::AcpAgentHarness,
     },
 };
 

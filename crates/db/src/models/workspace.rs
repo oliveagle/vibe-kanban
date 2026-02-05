@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqlitePool, Type};
+use sqlx::{FromRow, Row, SqlitePool, Type};
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
@@ -139,6 +139,55 @@ impl Workspace {
             .await
             .map_err(WorkspaceError::Database)?,
         };
+
+        Ok(workspaces)
+    }
+
+    /// Fetch workspaces for multiple task IDs
+    pub async fn fetch_all_bulk(
+        pool: &SqlitePool,
+        task_ids: &[Uuid],
+    ) -> Result<Vec<Self>, WorkspaceError> {
+        if task_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut query_builder = sqlx::QueryBuilder::new(
+            r#"SELECT id AS "id!: Uuid",
+                          task_id AS "task_id!: Uuid",
+                          container_ref,
+                          branch,
+                          agent_working_dir,
+                          setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                          created_at AS "created_at!: DateTime<Utc>",
+                          updated_at AS "updated_at!: DateTime<Utc>"
+                   FROM workspaces
+                   WHERE task_id IN ("#,
+        );
+
+        let mut separated = query_builder.separated(", ");
+        for id in task_ids {
+            separated.push_bind(id);
+        }
+        separated.push_unseparated(") ORDER BY created_at DESC");
+
+        let workspaces = query_builder
+            .build()
+            .fetch_all(pool)
+            .await
+            .map_err(WorkspaceError::Database)?
+            .into_iter()
+            .map(|row| Workspace {
+                id: row.get("id"),
+                task_id: row.get("task_id"),
+                container_ref: row.get("container_ref"),
+                branch: row.get("branch"),
+                agent_working_dir: row.get("agent_working_dir"),
+                setup_completed_at: row.get("setup_completed_at"),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            })
+            .collect();
 
         Ok(workspaces)
     }

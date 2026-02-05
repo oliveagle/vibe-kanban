@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, SqlitePool};
+use sqlx::{FromRow, Row, SqlitePool};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -239,6 +239,51 @@ impl WorkspaceRepo {
         )
         .fetch_all(pool)
         .await
+    }
+
+    /// Find unique repos for multiple task IDs
+    pub async fn find_unique_repos_for_tasks(
+        pool: &SqlitePool,
+        task_ids: &[Uuid],
+    ) -> Result<Vec<Repo>, sqlx::Error> {
+        if task_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut query_builder = sqlx::QueryBuilder::new(
+            r#"SELECT DISTINCT r.id as "id!: Uuid",
+                      r.path,
+                      r.name,
+                      r.display_name,
+                      r.created_at as "created_at!: DateTime<Utc>",
+                      r.updated_at as "updated_at!: DateTime<Utc>"
+               FROM repos r
+               JOIN workspace_repos wr ON r.id = wr.repo_id
+               JOIN workspaces w ON wr.workspace_id = w.id
+               WHERE w.task_id IN ("#,
+        );
+
+        let mut separated = query_builder.separated(", ");
+        for id in task_ids {
+            separated.push_bind(id);
+        }
+        separated.push_unseparated(") ORDER BY r.display_name ASC");
+
+        let repos = query_builder
+            .build()
+            .fetch_all(pool)
+            .await?
+            .into_iter()
+            .map(|row| Repo {
+                id: row.get("id"),
+                path: row.get("path"),
+                name: row.get("name"),
+                display_name: row.get("display_name"),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            })
+            .collect();
+        Ok(repos)
     }
 
     /// Find repos for a workspace with their copy_files configuration.

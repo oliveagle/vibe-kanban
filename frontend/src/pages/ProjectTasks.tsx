@@ -859,6 +859,7 @@ export function ProjectTasks() {
           selectedSharedTaskId={selectedSharedTaskId}
           onCreateTask={handleCreateNewTask}
           projectId={projectId!}
+          onTasksUpdated={handleRefreshTasks}
         />
       </div>
     );

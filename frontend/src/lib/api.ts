@@ -3,6 +3,8 @@
 import {
   ApprovalStatus,
   ApiResponse,
+  BulkDeleteTasks,
+  BulkUpdateTasks,
   Config,
   CreateFollowUpAttempt,
   EditorType,
@@ -474,6 +476,23 @@ export const tasksApi = {
       body: JSON.stringify(data),
     });
     return handleApiResponse<Task | null>(response);
+  },
+
+  // Bulk operations
+  bulkUpdate: async (projectId: string, data: BulkUpdateTasks): Promise<number> => {
+    const response = await makeRequest(`/api/projects/${projectId}/tasks/bulk-update`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<number>(response);
+  },
+
+  bulkDelete: async (projectId: string, data: BulkDeleteTasks): Promise<number> => {
+    const response = await makeRequest(`/api/projects/${projectId}/tasks/bulk-delete`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<number>(response);
   },
 };
 

@@ -42,19 +42,14 @@ pub async fn list_containers(
     State(_deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ContainerInfo>>>, ApiError> {
     let output = tokio::process::Command::new("podman")
-        .args([
-            "ps",
-            "-a",
-            "--format",
-            "json",
-        ])
+        .args(["ps", "-a", "--format", "json"])
         .output()
         .await
         .map_err(|e| ApiError::Io(e))?;
 
     if !output.status.success() {
         return Err(ApiError::BadRequest(
-            String::from_utf8_lossy(&output.stderr).to_string()
+            String::from_utf8_lossy(&output.stderr).to_string(),
         ));
     }
 
@@ -65,7 +60,8 @@ pub async fn list_containers(
         .into_iter()
         .map(|c| ContainerInfo {
             id: c["Id"].as_str().unwrap_or("").to_string(),
-            name: c["Names"].as_array()
+            name: c["Names"]
+                .as_array()
                 .and_then(|arr| arr.first())
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
@@ -112,12 +108,12 @@ pub async fn start_container(
 
     if !output.status.success() {
         return Err(ApiError::BadRequest(
-            String::from_utf8_lossy(&output.stderr).to_string()
+            String::from_utf8_lossy(&output.stderr).to_string(),
         ));
     }
 
     Ok(ResponseJson(ApiResponse::success(
-        String::from_utf8_lossy(&output.stdout).to_string()
+        String::from_utf8_lossy(&output.stdout).to_string(),
     )))
 }
 
@@ -133,12 +129,12 @@ pub async fn stop_container(
 
     if !output.status.success() {
         return Err(ApiError::BadRequest(
-            String::from_utf8_lossy(&output.stderr).to_string()
+            String::from_utf8_lossy(&output.stderr).to_string(),
         ));
     }
 
     Ok(ResponseJson(ApiResponse::success(
-        String::from_utf8_lossy(&output.stdout).to_string()
+        String::from_utf8_lossy(&output.stdout).to_string(),
     )))
 }
 
@@ -154,12 +150,12 @@ pub async fn restart_container(
 
     if !output.status.success() {
         return Err(ApiError::BadRequest(
-            String::from_utf8_lossy(&output.stderr).to_string()
+            String::from_utf8_lossy(&output.stderr).to_string(),
         ));
     }
 
     Ok(ResponseJson(ApiResponse::success(
-        String::from_utf8_lossy(&output.stdout).to_string()
+        String::from_utf8_lossy(&output.stdout).to_string(),
     )))
 }
 
@@ -175,12 +171,12 @@ pub async fn remove_container(
 
     if !output.status.success() {
         return Err(ApiError::BadRequest(
-            String::from_utf8_lossy(&output.stderr).to_string()
+            String::from_utf8_lossy(&output.stderr).to_string(),
         ));
     }
 
     Ok(ResponseJson(ApiResponse::success(
-        String::from_utf8_lossy(&output.stdout).to_string()
+        String::from_utf8_lossy(&output.stdout).to_string(),
     )))
 }
 
@@ -236,7 +232,7 @@ pub async fn run_container(
             args.push(c.clone());
         }
     }
-    
+
     let output = tokio::process::Command::new("podman")
         .args(&args)
         .output()
@@ -245,12 +241,12 @@ pub async fn run_container(
 
     if !output.status.success() {
         return Err(ApiError::BadRequest(
-            String::from_utf8_lossy(&output.stderr).to_string()
+            String::from_utf8_lossy(&output.stderr).to_string(),
         ));
     }
 
     let container_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    
+
     Ok(ResponseJson(ApiResponse::success(RunContainerResponse {
         container_id,
         output: String::from_utf8_lossy(&output.stdout).to_string(),
@@ -269,23 +265,18 @@ pub async fn list_images(
     State(_deployment): State<DeploymentImpl>,
 ) -> Result<ResponseJson<ApiResponse<Vec<ImageInfo>>>, ApiError> {
     let output = tokio::process::Command::new("podman")
-        .args([
-            "images",
-            "--format",
-            "json",
-        ])
+        .args(["images", "--format", "json"])
         .output()
         .await
         .map_err(|e| ApiError::BadRequest(format!("Failed to list images: {}", e)))?;
 
     if !output.status.success() {
         return Err(ApiError::BadRequest(
-            String::from_utf8_lossy(&output.stderr).to_string()
+            String::from_utf8_lossy(&output.stderr).to_string(),
         ));
     }
 
-    let images: Vec<ImageInfo> = serde_json::from_slice(&output.stdout)
-        .unwrap_or_default();
+    let images: Vec<ImageInfo> = serde_json::from_slice(&output.stdout).unwrap_or_default();
 
     Ok(ResponseJson(ApiResponse::success(images)))
 }
@@ -314,12 +305,12 @@ pub async fn pull_image(
 ) -> Result<ResponseJson<ApiResponse<String>>, ApiError> {
     // Normalize image name to full path
     let full_image_name = normalize_image_name(&payload.image);
-    
+
     // Get proxy settings from environment or use VK default
     let https_proxy = std::env::var("HTTPS_PROXY")
         .or_else(|_| std::env::var("https_proxy"))
         .unwrap_or_else(|_| "http://host.containers.internal:1080".to_string());
-    
+
     let http_proxy = std::env::var("HTTP_PROXY")
         .or_else(|_| std::env::var("http_proxy"))
         .unwrap_or_else(|_| "http://host.containers.internal:1080".to_string());
@@ -336,12 +327,12 @@ pub async fn pull_image(
 
     if !output.status.success() {
         return Err(ApiError::BadRequest(
-            String::from_utf8_lossy(&output.stderr).to_string()
+            String::from_utf8_lossy(&output.stderr).to_string(),
         ));
     }
 
     Ok(ResponseJson(ApiResponse::success(
-        String::from_utf8_lossy(&output.stdout).to_string()
+        String::from_utf8_lossy(&output.stdout).to_string(),
     )))
 }
 
@@ -349,9 +340,15 @@ pub fn router(_deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     Router::new()
         .route("/orchestration/containers", get(list_containers))
         .route("/orchestration/containers/run", post(run_container))
-        .route("/orchestration/containers/{id}/start", post(start_container))
+        .route(
+            "/orchestration/containers/{id}/start",
+            post(start_container),
+        )
         .route("/orchestration/containers/{id}/stop", post(stop_container))
-        .route("/orchestration/containers/{id}/restart", post(restart_container))
+        .route(
+            "/orchestration/containers/{id}/restart",
+            post(restart_container),
+        )
         .route("/orchestration/containers/{id}", post(remove_container))
         .route("/orchestration/images", get(list_images))
         .route("/orchestration/images/pull", post(pull_image))

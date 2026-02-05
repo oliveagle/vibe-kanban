@@ -121,6 +121,19 @@ pub struct UpdateTask {
     pub image_ids: Option<Vec<Uuid>>,
 }
 
+#[derive(Debug, Serialize, Deserialize, TS)]
+pub struct BulkUpdateTasks {
+    pub task_ids: Vec<Uuid>,
+    pub status: Option<TaskStatus>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, TS)]
+pub struct BulkDeleteTasks {
+    pub task_ids: Vec<Uuid>,
+}
+
 impl Task {
     pub fn to_prompt(&self) -> String {
         if let Some(description) = self.description.as_ref().filter(|d| !d.trim().is_empty()) {
@@ -437,6 +450,128 @@ ORDER BY t.created_at DESC"#,
 
         let result = query_builder.build().execute(executor).await?;
         Ok(result.rows_affected())
+    }
+
+    /// Bulk update tasks status and other fields
+    pub async fn bulk_update<'e, E>(
+        executor: E,
+        updates: &BulkUpdateTasks,
+    ) -> Result<u64, sqlx::Error>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        if updates.task_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let mut query_parts = Vec::new();
+        let mut param_count = 1;
+
+        if updates.status.is_some() {
+            query_parts.push(format!("status = ${}", param_count));
+            param_count += 1;
+        }
+
+        if updates.title.is_some() {
+            query_parts.push(format!("title = ${}", param_count));
+            param_count += 1;
+        }
+
+        if updates.description.is_some() {
+            query_parts.push(format!("description = ${}", param_count));
+            param_count += 1;
+        }
+
+        if query_parts.is_empty() {
+            return Ok(0);
+        }
+
+        query_parts.push("updated_at = CURRENT_TIMESTAMP".to_string());
+
+        let mut query_builder = sqlx::QueryBuilder::new(format!(
+            "UPDATE tasks SET {} WHERE id IN (",
+            query_parts.join(", ")
+        ));
+
+        if let Some(status) = &updates.status {
+            query_builder.push_bind(status);
+        }
+        if let Some(title) = &updates.title {
+            query_builder.push_bind(title);
+        }
+        if let Some(description) = &updates.description {
+            query_builder.push_bind(description);
+        }
+
+        let mut separated = query_builder.separated(", ");
+        for id in &updates.task_ids {
+            separated.push_bind(id);
+        }
+        separated.push_unseparated(")");
+
+        let result = query_builder.build().execute(executor).await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Bulk delete tasks by IDs
+    pub async fn bulk_delete<'e, E>(executor: E, task_ids: &[Uuid]) -> Result<u64, sqlx::Error>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        if task_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let mut query_builder = sqlx::QueryBuilder::new("DELETE FROM tasks WHERE id IN (");
+        let mut separated = query_builder.separated(", ");
+        for id in task_ids {
+            separated.push_bind(id);
+        }
+        separated.push_unseparated(")");
+
+        let result = query_builder.build().execute(executor).await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Check if tasks have running execution processes
+    pub async fn bulk_check_running_processes<'e, E>(
+        executor: E,
+        task_ids: &[Uuid],
+    ) -> Result<Vec<Uuid>, sqlx::Error>
+    where
+        E: Executor<'e, Database = Sqlite>,
+    {
+        if task_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // For now, we'll check each task individually
+        // This is less efficient but simpler to implement
+        let mut running_tasks = Vec::new();
+
+        for &task_id in task_ids {
+            let has_running = sqlx::query_scalar!(
+                r#"SELECT EXISTS(
+                    SELECT 1
+                    FROM tasks t
+                    JOIN workspaces w ON w.task_id = t.id
+                    JOIN sessions s ON s.workspace_id = w.id
+                    JOIN execution_processes ep ON ep.session_id = s.id
+                    WHERE ep.status = 'running'
+                    AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
+                    AND t.id = $1
+                ) as "exists!: i64"#,
+                task_id
+            )
+            .fetch_one(executor)
+            .await?;
+
+            if has_running != 0 {
+                running_tasks.push(task_id);
+            }
+        }
+
+        Ok(running_tasks)
     }
 
     pub async fn find_children_by_workspace_id(
