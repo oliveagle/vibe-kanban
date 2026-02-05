@@ -31,7 +31,7 @@ dev-install-agents:
 # 如果拉取失败，请手动运行: just dev-build-base
 dev-build-all:
     #!/usr/bin/env bash
-    VERSION="0.0.147"
+    VERSION="0.0.148"
     echo "Setting up development environment (v$VERSION)..."
     echo ""
 
@@ -68,7 +68,7 @@ dev-build-all:
 # 本地构建 base（需要良好的网络环境）
 dev-build-base:
     #!/usr/bin/env bash
-    VERSION="0.0.147"
+    VERSION="0.0.148"
     echo "Building base locally..."
     echo "⚠️  This requires access to crates.io and github.com"
     echo ""
@@ -89,7 +89,7 @@ dev-srv *args:
     fi
     
     # Check if dev image exists
-    if ! podman images | grep -q "vibe-kanban.*dev-runtime-v0.0.147"; then
+    if ! podman images | grep -q "vibe-kanban.*dev-runtime-v0.0.148"; then
         echo "Dev image not found, building all layers..."
         just dev-build-all
     fi
@@ -285,6 +285,56 @@ prod-wait-pull tag="dev" timeout="30":
         echo "not ready, retrying in ${CHECK_INTERVAL}s..."
         sleep $CHECK_INTERVAL
     done
+
+# ===========================================
+# VERSION MANAGEMENT
+# ===========================================
+
+# 升级版本号 (用于发布前)
+# Usage: just bump-version [new_version]
+# Example: just bump-version 0.0.148
+bump-version new_version:
+    #!/usr/bin/env bash
+    NEW_VERSION="{{new_version}}"
+    OLD_VERSION=$(cat package.json | grep '"version"' | head -1 | awk -F: '{ print $2 }' | sed 's/[",]//g' | tr -d '[[:space:]]')
+    
+    echo "Bumping version: $OLD_VERSION -> $NEW_VERSION"
+    echo ""
+    
+    # Update package.json files
+    echo "📦 Updating package.json files..."
+    sed -i "s/\"version\": \"$OLD_VERSION\"/\"version\": \"$NEW_VERSION\"/g" package.json
+    sed -i "s/\"version\": \"$OLD_VERSION\"/\"version\": \"$NEW_VERSION\"/g" frontend/package.json
+    sed -i "s/\"version\": \"$OLD_VERSION\"/\"version\": \"$NEW_VERSION\"/g" npx-cli/package.json
+    echo "✅ Updated package.json files"
+    
+    # Update justfile version references
+    echo "🔧 Updating justfile..."
+    sed -i "s/VERSION=\"$OLD_VERSION\"/VERSION=\"$NEW_VERSION\"/g" justfile
+    sed -i "s/base:v$OLD_VERSION/base:v$NEW_VERSION/g" justfile
+    sed -i "s/backend:$OLD_VERSION/backend:$NEW_VERSION/g" justfile
+    sed -i "s/dev-runtime-v$OLD_VERSION/dev-runtime-v$NEW_VERSION/g" justfile
+    echo "✅ Updated justfile"
+    
+    # Update docker-compose.local.yml
+    echo "🐳 Updating docker-compose.local.yml..."
+    sed -i "s/base:v$OLD_VERSION/base:v$NEW_VERSION/g" docker-compose.local.yml
+    echo "✅ Updated docker-compose.local.yml"
+    
+    # Update AGENTS.md
+    echo "📚 Updating AGENTS.md..."
+    sed -i "s/$OLD_VERSION/$NEW_VERSION/g" AGENTS.md
+    echo "✅ Updated AGENTS.md"
+    
+    echo ""
+    echo "✅ Version bumped to $NEW_VERSION"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Review changes: git diff"
+    echo "  2. Commit: git add -A && git commit -m \"chore: bump version to $NEW_VERSION\""
+    echo "  3. Create PR to master"
+    echo "  4. After merge, create tag: git tag v$NEW_VERSION && git push origin v$NEW_VERSION"
+    echo "  5. Wait for GitHub Actions to build: just prod-wait-pull $NEW_VERSION 30"
 
 # ===========================================
 # INSTALL & SETUP

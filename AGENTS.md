@@ -34,12 +34,12 @@ When making any changes that affect:
 4. `npx-cli/package.json`
 5. `justfile` (image version tags)
 
-**Current version:** `0.0.147`
-**Image tags:** `vibe-kanban:dev-base-v0.0.147`, `vibe-kanban:dev-runtime-v0.0.147`
+**Current version:** `0.0.148`
+**Image tags:** `vibe-kanban:dev-base-v0.0.148`, `vibe-kanban:dev-runtime-v0.0.148`
 
 **Release tagging:**
 - `release-version` tag always points to current stable release
-- Version tags: `v0.0.147`, `v0.0.148`, etc.
+- Version tags: `v0.0.148`, `v0.0.148`, etc.
 
 ## Build, Test, and Development Commands
 - Install: `pnpm i`
@@ -115,7 +115,7 @@ Coding agents are not installed by default to avoid slowing down container start
 # Pull production image from GHCR
 just prod-pull              # Pull dev branch build (default)
 just prod-pull latest       # Pull latest release
-just prod-pull 0.0.147      # Pull specific version
+just prod-pull 0.0.148      # Pull specific version
 just prod-wait-pull dev 30  # Wait for GitHub Actions build and pull
 
 # Start/stop production container
@@ -129,7 +129,7 @@ just prod-logs              # View container logs
 |-----|-------------|
 | `dev` | Latest dev branch build (default) |
 | `latest` | Latest release |
-| `0.0.147` | Specific version (only for releases) |
+| `0.0.148` | Specific version (only for releases) |
 | `<commit-sha>` | Specific commit build |
 
 **Production vs Development:**
@@ -217,7 +217,7 @@ just prod-up
 # Or manually:
 just prod-pull [tag]        # Pull specific tag (default: dev)
 just prod-pull latest       # Pull latest release
-just prod-pull 0.0.147      # Pull specific version
+just prod-pull 0.0.148      # Pull specific version
 just prod-wait-pull dev 30  # Wait for GitHub Actions and pull
 just prod-up                # Start container
 just prod-down              # Stop container
@@ -227,7 +227,7 @@ just prod-logs              # View logs
 **Image Tags:**
 - `dev` - Latest dev branch build (default for `just prod-pull`)
 - `latest` - Latest release
-- `0.0.147` - Specific version (only created for release tags)
+- `0.0.148` - Specific version (only created for release tags)
 - `<commit-sha>` - Specific commit build
 
 **Why no local production builds?**
@@ -404,39 +404,98 @@ feature/my-feature → dev → master/main
 
 ### Version Management
 
+**Current Version:** `0.0.148`
+
 All package.json files must maintain the same version number:
 - `package.json` (root) - Source of truth
 - `npx-cli/package.json` - Must match root
 - `frontend/package.json` - Must match root
 
-**When updating version:**
+**Quick Version Bump:**
+```bash
+just bump-version 0.0.148   # Bump to new version
+```
+
+**Manual Version Update (if needed):**
 1. Update root `package.json` version
 2. Update `npx-cli/package.json` to match
 3. Update `frontend/package.json` to match
-4. Commit all changes together
+4. Update version references in `justfile`, `docker-compose.local.yml`, `AGENTS.md`
+5. Commit all changes together
+
+**Release Workflow:**
+
+```
+feature/my-feature → dev → master → git tag v0.0.148
+```
+
+1. **Develop on feature branch**
+   ```bash
+   git checkout dev
+   git pull origin dev
+   git checkout -b feature/my-feature
+   # ... develop ...
+   git push origin feature/my-feature
+   # Create PR to dev
+   ```
+
+2. **Merge to dev**
+   - PR to `dev` branch
+   - GitHub Actions auto-builds `:dev` tag
+   - Test with: `just prod-pull dev`
+
+3. **Prepare release (version bump)**
+   ```bash
+   git checkout dev
+   git pull origin dev
+   just bump-version 0.0.148
+   git add -A
+   git commit -m "chore: bump version to 0.0.148"
+   git push origin dev
+   # Create PR to master
+   ```
+
+4. **Create release tag**
+   ```bash
+   git checkout master
+   git pull origin master
+   git tag v0.0.148
+   git push origin v0.0.148
+   ```
+
+5. **Wait for build and deploy**
+   ```bash
+   just prod-wait-pull 0.0.148 30
+   just prod-up
+   ```
+
+**Version Number Rules:**
+- Follow semantic versioning: `MAJOR.MINOR.PATCH`
+- MAJOR: Breaking changes
+- MINOR: New features (backward compatible)
+- PATCH: Bug fixes
+- Current project is pre-1.0, so we use `0.0.xxx`
 
 ### Container Image Versioning
 
 **Production (master/main):**
-- `ghcr.io/oliveagle/vibe-kanban/backend:latest`
-- `ghcr.io/oliveagle/vibe-kanban/backend:0.0.145`
-- `ghcr.io/oliveagle/vibe-kanban/frontend:latest`
-- `ghcr.io/oliveagle/vibe-kanban/frontend:0.0.145`
+- `ghcr.io/oliveagle/vibe-kanban/backend:latest` - Latest release
+- `ghcr.io/oliveagle/vibe-kanban/backend:0.0.148` - Specific version
 
 **Development (dev branch):**
-- `ghcr.io/oliveagle/vibe-kanban/backend:dev`
-- `ghcr.io/oliveagle/vibe-kanban/frontend:dev`
+- `ghcr.io/oliveagle/vibe-kanban/backend:dev` - Latest dev build
+- `ghcr.io/oliveagle/vibe-kanban/backend:<commit-sha>` - Specific commit
+
+**Base Image (shared):**
+- `ghcr.io/oliveagle/vibe-kanban/base:v0.0.148` - Versioned base
+- `ghcr.io/oliveagle/vibe-kanban/base:latest` - Latest base
 
 **For rollbacks:**
 ```bash
 # Use specific version instead of latest
-podman pull ghcr.io/oliveagle/vibe-kanban/backend:0.0.145
-podman pull ghcr.io/oliveagle/vibe-kanban/frontend:0.0.145
+just prod-pull 0.0.146
+just prod-up
 ```
-
-**Local development images:**
-- Tag local builds with version: `vibe-kanban:local-0.0.145`
-- Keep `vibe-kanban:local` as latest local build
 
 ## Browser Automation in Backend Container
 
@@ -608,7 +667,7 @@ podman run -d \
   -e HOST=0.0.0.0 \
   -e PORT=3000 \
   -e VIBE_BACKEND_URL=http://localhost:3000 \
-  localhost/vibe-kanban:dev-runtime-v0.0.147 \
+  localhost/vibe-kanban:dev-runtime-v0.0.148 \
   sh -c "echo 'root:100000:65536' > /etc/subuid && \
          echo 'root:100000:65536' > /etc/subgid && \
          mkdir -p /root/.config/opencode && \
