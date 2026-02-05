@@ -42,7 +42,7 @@ impl Tag {
             Tag,
             r#"SELECT id as "id!: Uuid", tag_name, content as "content!", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tags
-               WHERE id = $1"#,
+               WHERE id = "#,
             id
         )
         .fetch_optional(pool)
@@ -54,7 +54,7 @@ impl Tag {
         sqlx::query_as!(
             Tag,
             r#"INSERT INTO tags (id, tag_name, content)
-               VALUES ($1, $2, $3)
+               VALUES (?, ?2, ?3)
                RETURNING id as "id!: Uuid", tag_name, content as "content!", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             id,
             data.tag_name,
@@ -79,8 +79,8 @@ impl Tag {
         sqlx::query_as!(
             Tag,
             r#"UPDATE tags
-               SET tag_name = $2, content = $3, updated_at = NOW()
-               WHERE id = $1
+               SET tag_name = ?2, content = ?3, updated_at = NOW()
+               WHERE id = ?
                RETURNING id as "id!: Uuid", tag_name, content as "content!", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             id,
             tag_name,
@@ -91,7 +91,7 @@ impl Tag {
     }
 
     pub async fn delete(pool: &PgPool, id: Uuid) -> Result<u64, sqlx::Error> {
-        let result: sqlx::postgres::PgQueryResult = sqlx::query!("DELETE FROM tags WHERE id = $1", id)
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!("DELETE FROM tags WHERE id = ", id)
             .execute(pool)
             .await?;
         Ok(result.rows_affected())

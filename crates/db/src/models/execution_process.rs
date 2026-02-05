@@ -251,10 +251,10 @@ impl ExecutionProcess {
                       ep.created_at      as "created_at!: DateTime<Utc>",
                       ep.updated_at      as "updated_at!: DateTime<Utc>"
                FROM execution_processes ep
-               WHERE ep.session_id = $1
-                  AND ($2 OR ep.dropped = FALSE)
+               WHERE ep.session_id = ?
+                  AND (?2 OR ep.dropped = FALSE)
                 ORDER BY ep.created_at ASC
-                LIMIT $3 OFFSET $4"#,
+                LIMIT ?3 OFFSET ?4"#,
             session_id,
             show_soft_deleted,
             limit,
@@ -317,7 +317,7 @@ impl ExecutionProcess {
             r#"SELECT COUNT(*) as "count!: i64"
                FROM execution_processes ep
                JOIN sessions s ON ep.session_id = s.id
-               WHERE s.workspace_id = $1
+               WHERE s.workspace_id = ?
                  AND ep.status = 'running'
                  AND ep.run_reason != 'devserver'"#,
             workspace_id
@@ -374,7 +374,7 @@ impl ExecutionProcess {
             r#"SELECT cat.agent_session_id as "agent_session_id!"
                FROM execution_processes ep
                JOIN coding_agent_turns cat ON ep.id = cat.execution_process_id
-               WHERE ep.session_id = $1
+               WHERE ep.session_id = ?
                  AND ep.run_reason = 'codingagent'
                  AND ep.dropped = FALSE
                  AND cat.agent_session_id IS NOT NULL
@@ -520,8 +520,8 @@ impl ExecutionProcess {
 
         sqlx::query!(
             r#"UPDATE execution_processes
-               SET status = $1, exit_code = $2, completed_at = $3
-               WHERE id = $4"#,
+               SET status = ?, exit_code = ?2, completed_at = ?3
+               WHERE id = ?4"#,
             status,
             exit_code,
             completed_at,
@@ -551,8 +551,8 @@ impl ExecutionProcess {
         let result: sqlx::postgres::PgQueryResult = sqlx::query!(
             r#"UPDATE execution_processes
                SET dropped = TRUE
-             WHERE session_id = $1
-               AND created_at >= (SELECT created_at FROM execution_processes WHERE id = $2)
+             WHERE session_id = ?
+               AND created_at >= (SELECT created_at FROM execution_processes WHERE id = ?2)
                AND dropped = FALSE"#,
             session_id,
             boundary_process_id
@@ -575,9 +575,9 @@ impl ExecutionProcess {
             r#"SELECT eprs.after_head_commit
                FROM execution_process_repo_states eprs
                JOIN execution_processes ep ON ep.id = eprs.execution_process_id
-              WHERE ep.session_id = $1
-                AND eprs.repo_id = $2
-                AND ep.created_at < (SELECT created_at FROM execution_processes WHERE id = $3)
+              WHERE ep.session_id = ?
+                AND eprs.repo_id = ?2
+                AND ep.created_at < (SELECT created_at FROM execution_processes WHERE id = ?3)
               ORDER BY ep.created_at DESC
               LIMIT 1"#,
             session_id,

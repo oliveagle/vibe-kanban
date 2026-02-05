@@ -33,8 +33,8 @@ pub struct ContainerInfo {
 }
 
 #[derive(Debug, Clone, Type, Serialize, Deserialize, PartialEq, TS)]
-#[sqlx(type_name = $1"workspace_status", rename_all = $1"lowercase")]
-#[serde(rename_all = $1"lowercase")]
+#[sqlx(type_name = "workspace_status", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum WorkspaceStatus {
     SetupRunning,
     SetupComplete,
@@ -103,8 +103,8 @@ impl Workspace {
         pool: &PgPool,
         task_id: Option<Uuid>,
     ) -> Result<Vec<Self>, WorkspaceError> {
-        let workspaces = $1match task_id {
-            Some(tid) = $1> sqlx::query_as!(
+        let workspaces = match task_id {
+            Some(tid) = ?> sqlx::query_as!(
                 Workspace,
                 r#"SELECT id AS "id!: Uuid",
                               task_id AS "task_id!: Uuid",
@@ -115,14 +115,14 @@ impl Workspace {
                               created_at AS "created_at!: DateTime<Utc>",
                               updated_at AS "updated_at!: DateTime<Utc>"
                        FROM workspaces
-                       WHERE task_id = $1$1
+                       WHERE task_id = ?
                        ORDER BY created_at DESC"#,
                 tid
             )
             .fetch_all(pool)
             .await
             .map_err(WorkspaceError::Database)?,
-            None = $1> sqlx::query_as!(
+            None = ?> sqlx::query_as!(
                 Workspace,
                 r#"SELECT id AS "id!: Uuid",
                               task_id AS "task_id!: Uuid",
@@ -150,7 +150,7 @@ impl Workspace {
         task_id: Uuid,
         project_id: Uuid,
     ) -> Result<WorkspaceContext, WorkspaceError> {
-        let workspace = $1sqlx::query_as!(
+        let workspace = sqlx::query_as!(
             Workspace,
             r#"SELECT  w.id                AS "id!: Uuid",
                        w.task_id           AS "task_id!: Uuid",
@@ -161,9 +161,9 @@ impl Workspace {
                        w.created_at        AS "created_at!: DateTime<Utc>",
                        w.updated_at        AS "updated_at!: DateTime<Utc>"
                FROM    workspaces w
-               JOIN    tasks t ON w.task_id = $1t.id
-               JOIN    projects p ON t.project_id = $1p.id
-               WHERE   w.id = $1$1 AND t.id = $1$2 AND p.id = $1$3"#,
+               JOIN    tasks t ON w.task_id = ?t.id
+               JOIN    projects p ON t.project_id = ?p.id
+               WHERE   w.id = ? AND t.id = ?2 AND p.id = ?3"#,
             workspace_id,
             task_id,
             project_id
@@ -173,15 +173,15 @@ impl Workspace {
         .ok_or(WorkspaceError::TaskNotFound)?;
 
         // Load task and project (we know they exist due to JOIN validation)
-        let task = $1Task::find_by_id(pool, task_id)
+        let task = ?Task::find_by_id(pool, task_id)
             .await?
             .ok_or(WorkspaceError::TaskNotFound)?;
 
-        let project = $1Project::find_by_id(pool, project_id)
+        let project = ?Project::find_by_id(pool, project_id)
             .await?
             .ok_or(WorkspaceError::ProjectNotFound)?;
 
-        let workspace_repos = $1
+        let workspace_repos = ?
             WorkspaceRepo::find_repos_with_target_branch_for_workspace(pool, workspace_id).await?;
 
         Ok(WorkspaceContext {
@@ -198,9 +198,9 @@ impl Workspace {
         workspace_id: Uuid,
         container_ref: &str,
     ) -> Result<(), sqlx::Error> {
-        let now = $1Utc::now();
+        let now = Utc::now();
         sqlx::query!(
-            "UPDATE workspaces SET container_ref = $1$1, updated_at = $1$2 WHERE id = $1$3",
+            "UPDATE workspaces SET container_ref = ?, updated_at = ?2 WHERE id = ?3",
             container_ref,
             now,
             workspace_id
@@ -215,7 +215,7 @@ impl Workspace {
         workspace_id: Uuid,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            "UPDATE workspaces SET container_ref = $1NULL, updated_at = $1NOW() WHERE id = $1?",
+            "UPDATE workspaces SET container_ref = ?NULL, updated_at = ?NOW() WHERE id = ??",
             workspace_id
         )
         .execute(pool)
@@ -227,7 +227,7 @@ impl Workspace {
     /// Call this when the workspace is accessed (e.g., opened in editor).
     pub async fn touch(pool: &PgPool, workspace_id: Uuid) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            "UPDATE workspaces SET updated_at = $1NOW() WHERE id = $1?",
+            "UPDATE workspaces SET updated_at = ?NOW() WHERE id = ??",
             workspace_id
         )
         .execute(pool)
@@ -247,7 +247,7 @@ impl Workspace {
                        created_at        AS "created_at!: DateTime<Utc>",
                        updated_at        AS "updated_at!: DateTime<Utc>"
                FROM    workspaces
-               WHERE   id = $1$1"#,
+               WHERE   id = "#,
             id
         )
         .fetch_optional(pool)
@@ -266,7 +266,7 @@ impl Workspace {
                        created_at        AS "created_at!: DateTime<Utc>",
                        updated_at        AS "updated_at!: DateTime<Utc>"
                FROM    workspaces
-               WHERE   ctid = $1$1"#,
+               WHERE   ctid = "#,
             ctid
         )
         .fetch_optional(pool)
@@ -277,8 +277,8 @@ impl Workspace {
         pool: &PgPool,
         container_ref: &str,
     ) -> Result<bool, sqlx::Error> {
-        let result = $1sqlx::query!(
-            r#"SELECT EXISTS(SELECT 1 FROM workspaces WHERE container_ref = $1?) as "exists!: bool""#,
+        let result = sqlx::query!(
+            r#"SELECT EXISTS(SELECT 1 FROM workspaces WHERE container_ref = ??) as "exists!: bool""#,
             container_ref
         )
         .fetch_one(pool)
@@ -304,13 +304,13 @@ impl Workspace {
                 w.created_at as "created_at!: DateTime<Utc>",
                 w.updated_at as "updated_at!: DateTime<Utc>"
             FROM workspaces w
-            LEFT JOIN sessions s ON w.id = $1s.workspace_id
-            LEFT JOIN execution_processes ep ON s.id = $1ep.session_id AND ep.completed_at IS NOT NULL
+            LEFT JOIN sessions s ON w.id = ?s.workspace_id
+            LEFT JOIN execution_processes ep ON s.id = ?ep.session_id AND ep.completed_at IS NOT NULL
             WHERE w.container_ref IS NOT NULL
                 AND w.id NOT IN (
                     SELECT DISTINCT s2.workspace_id
                     FROM sessions s2
-                    JOIN execution_processes ep2 ON s2.id = $1ep2.session_id
+                    JOIN execution_processes ep2 ON s2.id = ?ep2.session_id
                     WHERE ep2.completed_at IS NULL
                 )
             GROUP BY w.id, w.container_ref, w.updated_at
@@ -343,7 +343,7 @@ impl Workspace {
         Ok(sqlx::query_as!(
             Workspace,
             r#"INSERT INTO workspaces (id, task_id, container_ref, branch, agent_working_dir, setup_completed_at)
-               VALUES ($1, $2, $3, $4, $5, $6)
+               VALUES (?, ?2, ?3, ?4, ?5, ?6)
                RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, agent_working_dir, setup_completed_at as "setup_completed_at: DateTime<Utc>", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             id,
             task_id,
@@ -362,7 +362,7 @@ impl Workspace {
         new_branch_name: &str,
     ) -> Result<(), WorkspaceError> {
         sqlx::query!(
-            "UPDATE workspaces SET branch = $1$1, updated_at = $1NOW() WHERE id = $1$2",
+            "UPDATE workspaces SET branch = ?, updated_at = ?NOW() WHERE id = ?2",
             new_branch_name,
             workspace_id,
         )
@@ -376,13 +376,13 @@ impl Workspace {
         pool: &PgPool,
         container_ref: &str,
     ) -> Result<ContainerInfo, sqlx::Error> {
-        let result = $1sqlx::query!(
+        let result = sqlx::query!(
             r#"SELECT w.id as "workspace_id!: Uuid",
                       w.task_id as "task_id!: Uuid",
                       t.project_id as "project_id!: Uuid"
                FROM workspaces w
-               JOIN tasks t ON w.task_id = $1t.id
-               WHERE w.container_ref = $1?"#,
+               JOIN tasks t ON w.task_id = ?t.id
+               WHERE w.container_ref = ??"#,
             container_ref
         )
         .fetch_optional(pool)

@@ -100,7 +100,7 @@ impl Project {
                 INNER JOIN workspaces w ON w.task_id = t.id
                 ORDER BY w.updated_at DESC
             )
-            LIMIT $1
+            LIMIT ?
             "#,
             limit
         )
@@ -120,7 +120,7 @@ impl Project {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM projects
-               WHERE id = $1"#,
+               WHERE id = "#,
             id
         )
         .fetch_optional(pool)
@@ -139,7 +139,7 @@ impl Project {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM projects
-               WHERE ctid = $1"#,
+               WHERE ctid = "#,
             ctid
         )
         .fetch_optional(pool)
@@ -161,7 +161,7 @@ impl Project {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM projects
-               WHERE remote_project_id = $1
+               WHERE remote_project_id = ?
                LIMIT 1"#,
             remote_project_id
         )
@@ -180,7 +180,7 @@ impl Project {
                     id,
                     name
                 ) VALUES (
-                    $1, $2
+                    ?, ?2
                 )
                 RETURNING id as "id!: Uuid",
                           name,
@@ -214,8 +214,8 @@ impl Project {
         sqlx::query_as!(
             Project,
             r#"UPDATE projects
-               SET name = $2, dev_script = $3, dev_script_working_dir = $4, default_agent_working_dir = $5
-               WHERE id = $1
+               SET name = ?2, dev_script = ?3, dev_script_working_dir = ?4, default_agent_working_dir = ?5
+               WHERE id = ?
                RETURNING id as "id!: Uuid",
                          name,
                          dev_script,
@@ -241,7 +241,7 @@ impl Project {
         sqlx::query!(
             r#"UPDATE projects
                SET default_agent_working_dir = ''
-               WHERE id = $1"#,
+               WHERE id = "#,
             id
         )
         .execute(pool)
@@ -256,8 +256,8 @@ impl Project {
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             r#"UPDATE projects
-               SET remote_project_id = $2
-               WHERE id = $1"#,
+               SET remote_project_id = ?2
+               WHERE id = "#,
             id,
             remote_project_id
         )
@@ -278,8 +278,8 @@ impl Project {
     {
         sqlx::query!(
             r#"UPDATE projects
-               SET remote_project_id = $2
-               WHERE id = $1"#,
+               SET remote_project_id = ?2
+               WHERE id = "#,
             id,
             remote_project_id
         )
@@ -290,7 +290,7 @@ impl Project {
     }
 
     pub async fn delete(pool: &PgPool, id: Uuid) -> Result<u64, sqlx::Error> {
-        let result: sqlx::postgres::PgQueryResult = sqlx::query!("DELETE FROM projects WHERE id = $1", id)
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!("DELETE FROM projects WHERE id = ", id)
             .execute(pool)
             .await?;
         Ok(result.rows_affected())

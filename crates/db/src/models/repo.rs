@@ -53,7 +53,7 @@ impl Repo {
         display_name: &str,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            "UPDATE repos SET name = $1, display_name = $2, updated_at = NOW() WHERE id = $3",
+            "UPDATE repos SET name = ?, display_name = ?2, updated_at = NOW() WHERE id = ?3",
             name,
             display_name,
             id
@@ -73,7 +73,7 @@ impl Repo {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM repos
-               WHERE id = $1"#,
+               WHERE id = "#,
             id
         )
         .fetch_optional(pool)
@@ -99,7 +99,7 @@ impl Repo {
         sqlx::query_as!(
             Repo,
             r#"INSERT INTO repos (id, path, name, display_name)
-               VALUES ($1, $2, $3, $4)
+               VALUES (?, ?2, ?3, ?4)
                ON CONFLICT(path) DO UPDATE SET updated_at = updated_at
                RETURNING id as "id!: Uuid",
                          path,

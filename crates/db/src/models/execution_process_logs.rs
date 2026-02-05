@@ -27,7 +27,7 @@ impl ExecutionProcessLogs {
                 byte_size,
                 inserted_at as "inserted_at!: DateTime<Utc>"
                FROM execution_process_logs 
-               WHERE execution_id = $1
+               WHERE execution_id = ?
                ORDER BY inserted_at ASC"#,
             execution_id
         )
@@ -56,7 +56,7 @@ impl ExecutionProcessLogs {
         let byte_size = jsonl_line.len() as i64;
         sqlx::query!(
             r#"INSERT INTO execution_process_logs (execution_id, logs, byte_size, inserted_at)
-               VALUES ($1, $2, $3, NOW())"#,
+               VALUES (?, ?2, ?3, NOW())"#,
             execution_id,
             jsonl_line,
             byte_size

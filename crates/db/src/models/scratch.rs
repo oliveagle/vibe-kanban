@@ -125,7 +125,7 @@ impl Scratch {
             ScratchRow,
             r#"
             INSERT INTO scratch (id, scratch_type, payload)
-            VALUES ($1, $2, $3)
+            VALUES (?, ?2, ?3)
             RETURNING
                 id              as "id!: Uuid",
                 scratch_type,
@@ -159,7 +159,7 @@ impl Scratch {
                 created_at      as "created_at!: DateTime<Utc>",
                 updated_at      as "updated_at!: DateTime<Utc>"
             FROM scratch
-            WHERE id = $1 AND scratch_type = $2
+            WHERE id = ? AND scratch_type = ?2
             "#,
             id,
             scratch_type_str,
@@ -211,7 +211,7 @@ impl Scratch {
             ScratchRow,
             r#"
             INSERT INTO scratch (id, scratch_type, payload)
-            VALUES ($1, $2, $3)
+            VALUES (?, ?2, ?3)
             ON CONFLICT(id, scratch_type) DO UPDATE SET
                 payload = excluded.payload,
                 updated_at = NOW()
@@ -239,7 +239,7 @@ impl Scratch {
     ) -> Result<u64, sqlx::Error> {
         let scratch_type_str = scratch_type.to_string();
         let result: sqlx::postgres::PgQueryResult = sqlx::query!(
-            "DELETE FROM scratch WHERE id = $1 AND scratch_type = $2",
+            "DELETE FROM scratch WHERE id = ? AND scratch_type = ?2",
             id,
             scratch_type_str
         )
@@ -262,7 +262,7 @@ impl Scratch {
                 created_at      as "created_at!: DateTime<Utc>",
                 updated_at      as "updated_at!: DateTime<Utc>"
             FROM scratch
-            WHERE ctid = $1
+            WHERE ctid = ?
             "#,
             ctid
         )

@@ -97,7 +97,7 @@ impl Merge {
             MergeRow,
             r#"INSERT INTO merges (
                 id, workspace_id, repo_id, merge_type, merge_commit, created_at, target_branch_name
-            ) VALUES ($1, $2, $3, 'direct', $4, $5, $6)
+            ) VALUES (?, ?2, ?3, 'direct', ?4, ?5, ?6)
             RETURNING
                 id as "id!: Uuid",
                 workspace_id as "workspace_id!: Uuid",
@@ -139,7 +139,7 @@ impl Merge {
             MergeRow,
             r#"INSERT INTO merges (
                 id, workspace_id, repo_id, merge_type, pr_number, pr_url, pr_status, created_at, target_branch_name
-            ) VALUES ($1, $2, $3, 'pr', $4, $5, 'open', $6, $7)
+            ) VALUES (?, ?2, ?3, 'pr', ?4, ?5, 'open', ?6, ?7)
             RETURNING
                 id as "id!: Uuid",
                 workspace_id as "workspace_id!: Uuid",
@@ -209,10 +209,10 @@ impl Merge {
 
         sqlx::query!(
             r#"UPDATE merges
-            SET pr_status = $1,
-                pr_merge_commit_sha = $2,
-                pr_merged_at = $3
-            WHERE id = $4"#,
+            SET pr_status = ?,
+                pr_merge_commit_sha = ?2,
+                pr_merged_at = ?3
+            WHERE id = ?4"#,
             pr_status,
             merge_commit_sha,
             merged_at,
@@ -245,7 +245,7 @@ impl Merge {
                 target_branch_name as "target_branch_name!: String",
                 created_at as "created_at!: DateTime<Utc>"
             FROM merges
-            WHERE workspace_id = $1
+            WHERE workspace_id = ?
             ORDER BY created_at DESC"#,
             workspace_id
         )
@@ -278,7 +278,7 @@ impl Merge {
                 target_branch_name as "target_branch_name!: String",
                 created_at as "created_at!: DateTime<Utc>"
             FROM merges
-            WHERE workspace_id = $1 AND repo_id = $2
+            WHERE workspace_id = ? AND repo_id = ?2
             ORDER BY created_at DESC"#,
             workspace_id,
             repo_id
