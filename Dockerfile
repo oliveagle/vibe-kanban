@@ -108,9 +108,17 @@ RUN cargo build --release --bin server
 # Create repos directory
 RUN mkdir -p /repos
 
+# Create data directory for persistent storage
+RUN mkdir -p /root/.local/share/vibe-kanban && \
+    chmod 755 /root/.local/share/vibe-kanban
+
+# Copy production startup script
+COPY scripts/start-prod.sh /usr/local/bin/start-prod.sh
+RUN chmod +x /usr/local/bin/start-prod.sh
+
 EXPOSE 3000
 
-CMD ["cargo", "run", "--release", "--bin", "server"]
+CMD ["/usr/local/bin/start-prod.sh"]
 
 # ============================================
 # Development Runtime
