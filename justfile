@@ -219,6 +219,53 @@ prod-down:
 prod-logs:
     podman compose -f docker-compose.local.yml logs -f
 
+# 等待 GitHub Actions 构建完成并拉取镜像
+# Usage: just prod-wait-pull [version] [timeout_minutes]
+# Example: just prod-wait-pull 0.0.148 30
+prod-wait-pull version="0.0.147" timeout="30":
+    #!/usr/bin/env bash
+    VERSION="{{version}}"
+    TIMEOUT_MIN={{timeout}}
+    IMAGE="ghcr.io/oliveagle/vibe-kanban/backend:$VERSION"
+    
+    echo "⏳ Waiting for GitHub Actions to build image..."
+    echo "Image: $IMAGE"
+    echo "Timeout: ${TIMEOUT_MIN} minutes"
+    echo ""
+    
+    START_TIME=$(date +%s)
+    TIMEOUT_SEC=$((TIMEOUT_MIN * 60))
+    CHECK_INTERVAL=30
+    
+    while true; do
+        CURRENT_TIME=$(date +%s)
+        ELAPSED=$((CURRENT_TIME - START_TIME))
+        
+        if [ $ELAPSED -ge $TIMEOUT_SEC ]; then
+            echo ""
+            echo "❌ Timeout after ${TIMEOUT_MIN} minutes"
+            echo "Image not available: $IMAGE"
+            exit 1
+        fi
+        
+        # Try to pull the image
+        echo -n "[$((ELAPSED / 60))m$((ELAPSED % 60))s] Checking... "
+        
+        if podman pull $IMAGE 2>/dev/null; then
+            echo "✅"
+            echo ""
+            echo "✅ Image pulled successfully!"
+            
+            # Tag as local for docker-compose compatibility
+            podman tag $IMAGE vibe-kanban:local
+            echo "✅ Tagged as vibe-kanban:local"
+            exit 0
+        fi
+        
+        echo "not ready, retrying in ${CHECK_INTERVAL}s..."
+        sleep $CHECK_INTERVAL
+    done
+
 # ===========================================
 # INSTALL & SETUP
 # ===========================================
