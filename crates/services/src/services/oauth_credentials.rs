@@ -61,11 +61,26 @@ impl OAuthCredentials {
         Ok(())
     }
 
+    pub async fn load_for_user(&self, username: &str) -> std::io::Result<()> {
+        let creds = self.backend.load_for_user(username).await?.map(Credentials::from);
+        *self.inner.write().await = creds;
+        Ok(())
+    }
+
     pub async fn save(&self, creds: &Credentials) -> std::io::Result<()> {
         let stored = StoredCredentials {
             refresh_token: creds.refresh_token.clone(),
         };
         self.backend.save(&stored).await?;
+        *self.inner.write().await = Some(creds.clone());
+        Ok(())
+    }
+
+    pub async fn save_for_user(&self, username: &str, creds: &Credentials) -> std::io::Result<()> {
+        let stored = StoredCredentials {
+            refresh_token: creds.refresh_token.clone(),
+        };
+        self.backend.save_for_user(username, &stored).await?;
         *self.inner.write().await = Some(creds.clone());
         Ok(())
     }
@@ -83,7 +98,13 @@ impl OAuthCredentials {
 
 trait StoreBackend {
     async fn load(&self) -> std::io::Result<Option<StoredCredentials>>;
+    async fn load_for_user(&self, username: &str) -> std::io::Result<Option<StoredCredentials>> {
+        self.load().await
+    }
     async fn save(&self, creds: &StoredCredentials) -> std::io::Result<()>;
+    async fn save_for_user(&self, _username: &str, creds: &StoredCredentials) -> std::io::Result<()> {
+        self.save(creds).await
+    }
     async fn clear(&self) -> std::io::Result<()>;
 }
 
@@ -101,7 +122,7 @@ impl Backend {
             .unwrap_or(false)
         {
             tracing::info!("OAuth credentials backend: database (deferred)");
-            return Backend::File(FileBackend { path });
+            return Backend::File(FileBackend { base_path: path });
         }
 
         #[cfg(target_os = "macos")]
@@ -113,7 +134,7 @@ impl Backend {
             };
             if use_file {
                 tracing::info!("OAuth credentials backend: file");
-                Backend::File(FileBackend { path })
+            Backend::File(FileBackend { base_path: path })
             } else {
                 tracing::info!("OAuth credentials backend: keychain");
                 Backend::Keychain(KeychainBackend)
@@ -122,7 +143,7 @@ impl Backend {
         #[cfg(not(target_os = "macos"))]
         {
             tracing::info!("OAuth credentials backend: file");
-            Backend::File(FileBackend { path })
+            Backend::File(FileBackend { base_path: path })
         }
     }
 }
@@ -157,22 +178,44 @@ impl StoreBackend for Backend {
 }
 
 struct FileBackend {
-    path: PathBuf,
+    base_path: PathBuf,
 }
 
 impl FileBackend {
+    fn path_for_user(&self, username: &str) -> PathBuf {
+        self.base_path.with_file_name(format!("credentials_{}.json", username))
+    }
+
     async fn load(&self) -> std::io::Result<Option<StoredCredentials>> {
-        if !self.path.exists() {
+        if !self.base_path.exists() {
             return Ok(None);
         }
 
-        let bytes = std::fs::read(&self.path)?;
+        let bytes = std::fs::read(&self.base_path)?;
         match Self::parse_credentials(&bytes) {
             Ok(creds) => Ok(Some(creds)),
             Err(e) => {
                 tracing::warn!(?e, "failed to parse credentials file, renaming to .bad");
-                let bad = self.path.with_extension("bad");
-                let _ = std::fs::rename(&self.path, bad);
+                let bad = self.base_path.with_extension("bad");
+                let _ = std::fs::rename(&self.base_path, bad);
+                Ok(None)
+            }
+        }
+    }
+
+    async fn load_for_user(&self, username: &str) -> std::io::Result<Option<StoredCredentials>> {
+        let path = self.path_for_user(username);
+        if !path.exists() {
+            return Ok(None);
+        }
+
+        let bytes = std::fs::read(&path)?;
+        match Self::parse_credentials(&bytes) {
+            Ok(creds) => Ok(Some(creds)),
+            Err(e) => {
+                tracing::warn!(?e, "failed to parse credentials file, renaming to .bad");
+                let bad = path.with_extension("bad");
+                let _ = std::fs::rename(&path, bad);
                 Ok(None)
             }
         }
@@ -183,7 +226,7 @@ impl FileBackend {
     }
 
     async fn save(&self, creds: &StoredCredentials) -> std::io::Result<()> {
-        let tmp = self.path.with_extension("tmp");
+        let tmp = self.base_path.with_extension("tmp");
 
         let file = {
             let mut opts = std::fs::OpenOptions::new();
@@ -202,12 +245,37 @@ impl FileBackend {
         file.sync_all()?;
         drop(file);
 
-        std::fs::rename(&tmp, &self.path)?;
+        std::fs::rename(&tmp, &self.base_path)?;
+        Ok(())
+    }
+
+    async fn save_for_user(&self, username: &str, creds: &StoredCredentials) -> std::io::Result<()> {
+        let path = self.path_for_user(username);
+        let tmp = path.with_extension("tmp");
+
+        let file = {
+            let mut opts = std::fs::OpenOptions::new();
+            opts.create(true).truncate(true).write(true);
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                opts.mode(0o600);
+            }
+
+            opts.open(&tmp)?
+        };
+
+        serde_json::to_writer_pretty(&file, creds)?;
+        file.sync_all()?;
+        drop(file);
+
+        std::fs::rename(&tmp, &path)?;
         Ok(())
     }
 
     async fn clear(&self) -> std::io::Result<()> {
-        let _ = std::fs::remove_file(&self.path);
+        let _ = std::fs::remove_file(&self.base_path);
         Ok(())
     }
 }

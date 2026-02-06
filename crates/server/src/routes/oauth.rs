@@ -75,15 +75,25 @@ async fn local_login(
 
     match local_auth.login(&payload.username, &payload.password).await {
         Ok(auth_response) => {
+            let refresh_token = if let Ok(Some(existing_creds)) = deployment
+                .auth_context()
+                .load_credentials_for_user(&auth_response.username)
+                .await
+            {
+                existing_creds.refresh_token
+            } else {
+                auth_response.access_token.clone()
+            };
+
             let credentials = Credentials {
                 access_token: Some(auth_response.access_token.clone()),
-                refresh_token: auth_response.access_token.clone(),
+                refresh_token,
                 expires_at: Some(auth_response.expires_at),
             };
 
             deployment
                 .auth_context()
-                .save_credentials(&credentials)
+                .save_credentials_for_user(&auth_response.username, &credentials)
                 .await
                 .map_err(|e| {
                     tracing::error!(?e, "Failed to save local auth credentials");
