@@ -425,6 +425,34 @@ podman logs -f vibe-kanban-backend-dev
 
 Look for `[FRONTEND]` prefix in the logs to identify frontend-generated log entries.
 
+## Optional Features Configuration
+
+### Discord Integration
+
+Discord online count display is disabled by default. To enable it:
+
+**Environment Variable:**
+```bash
+VITE_ENABLE_DISCORD=true
+```
+
+**Default:** `false` (disabled)
+
+### PostHog Analytics
+
+PostHog analytics is disabled by default. To enable it:
+
+**Environment Variables:**
+```bash
+VITE_ENABLE_POSTHOG=true
+VITE_POSTHOG_API_KEY=your_api_key
+VITE_POSTHOG_API_ENDPOINT=https://your-instance.posthog.com
+```
+
+**Default:** `false` (disabled)
+
+**Note:** All three variables must be set for analytics to work.
+
 ## Security & Config Tips
 - Use `.env` for local overrides; never commit secrets. Key envs: `FRONTEND_PORT`, `BACKEND_PORT`, `HOST` 
 - Dev ports and assets are managed by `scripts/setup-dev-environment.js`.

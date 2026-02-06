@@ -10,7 +10,11 @@ import posthog from 'posthog-js';
 import { PostHogProvider } from 'posthog-js/react';
 import './types/modals';
 
+// Check if PostHog analytics is enabled via environment variable
+const isPostHogEnabled = import.meta.env.VITE_ENABLE_POSTHOG === 'true';
+
 if (
+  isPostHogEnabled &&
   import.meta.env.VITE_POSTHOG_API_KEY &&
   import.meta.env.VITE_POSTHOG_API_ENDPOINT
 ) {
@@ -22,10 +26,6 @@ if (
     autocapture: false,
     opt_out_capturing_by_default: true,
   });
-} else {
-  console.warn(
-    'PostHog API key or endpoint not set. Analytics will be disabled.'
-  );
 }
 
 const queryClient = new QueryClient({

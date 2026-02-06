@@ -19,6 +19,11 @@ pub async fn serve_frontend_fallback() -> impl IntoResponse {
     serve_file("index.html").await
 }
 
+pub async fn serve_frontend_assets(uri: axum::extract::Path<String>) -> impl IntoResponse {
+    let path = format!("assets/{}", uri.trim_start_matches('/'));
+    serve_file(&path).await
+}
+
 pub async fn serve_frontend_root() -> impl IntoResponse {
     serve_file("index.html").await
 }
