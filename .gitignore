@@ -85,3 +85,6 @@ dev_assets
 vibe-kanban-cloud/
 
 .jj
+
+# SQLx backup files
+crates/db/.sqlx/.sqlx.sqlite.backup/
