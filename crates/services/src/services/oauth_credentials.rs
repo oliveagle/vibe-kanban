@@ -336,8 +336,8 @@ impl DatabaseBackend {
     async fn save_for_user(&self, username: &str, creds: &StoredCredentials) -> std::io::Result<()> {
         sqlx::query!(
             r#"
-            INSERT INTO user_credentials (username, refresh_token, expires_at)
-            VALUES ($1, $2, NULL)
+            INSERT INTO user_credentials (user_id, username, refresh_token, expires_at)
+            VALUES (NULL, $1, $2, NULL)
             ON CONFLICT (username) DO UPDATE SET
                 refresh_token = EXCLUDED.refresh_token,
                 updated_at = NOW()

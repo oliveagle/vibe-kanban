@@ -309,6 +309,12 @@ impl LocalDeployment {
     }
 
     pub async fn get_login_status(&self) -> LoginStatus {
+        if let Some(cached_profile) = self.auth_context.cached_profile().await {
+            if let Some(username) = cached_profile.username.as_ref() {
+                let _ = self.auth_context.load_credentials_for_user(username).await;
+            }
+        }
+
         if self.auth_context.get_credentials().await.is_none() {
             self.auth_context.clear_profile().await;
             return LoginStatus::LoggedOut;
