@@ -39,7 +39,10 @@ export function useLocalAuthMutations() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
       });
-      return handleResponse<LocalLoginResponse>(response);
+      const data = await handleResponse<LocalLoginResponse>(response);
+      // Save access_token to localStorage for subsequent requests
+      localStorage.setItem('access_token', data.access_token);
+      return data;
     },
     retry: false, // Don't retry login on failure
   });
