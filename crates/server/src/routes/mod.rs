@@ -1,10 +1,12 @@
 use axum::{
     Router,
+    middleware::from_fn_with_state,
     routing::{IntoMakeService, get},
 };
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::DeploymentImpl;
+use crate::middleware::auth_middleware;
 
 pub mod approvals;
 pub mod config;
@@ -59,9 +61,21 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .allow_methods(Any)
         .allow_headers(Any);
 
+    // Apply auth middleware to all API routes except health check and auth routes
+    let protected_api_routes = base_routes.layer(from_fn_with_state(
+        deployment.clone(),
+        crate::middleware::auth_middleware,
+    ));
+
+    // Apply auth middleware to all API routes (except health check)
+    let protected_api_routes = base_routes.layer(from_fn_with_state(
+        deployment.clone(),
+        crate::middleware::auth_middleware,
+    ));
+
     Router::new()
         .route("/", get(frontend::serve_frontend_root))
-        .nest("/api", base_routes)
+        .nest("/api", protected_api_routes)
         .route("/assets/{*path}", get(frontend::serve_frontend_assets))
         .fallback(get(frontend::serve_frontend_fallback))
         .layer(cors)
