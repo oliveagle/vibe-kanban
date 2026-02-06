@@ -126,9 +126,18 @@ impl Deployment for LocalDeployment {
 
         let share_config = ShareConfig::from_env();
 
-        let oauth_credentials = Arc::new(OAuthCredentials::new(credentials_path()));
+        let user_id_uuid = uuid::Uuid::parse_str(&user_id).unwrap_or_else(|_| {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            user_id.hash(&mut hasher);
+            let hash = hasher.finish();
+            uuid::Uuid::from_u64_pair(hash, hash)
+        });
+        
+        let oauth_credentials = Arc::new(OAuthCredentials::with_pool(db.pool.clone(), user_id_uuid));
         if let Err(e) = oauth_credentials.load().await {
-            tracing::warn!(?e, "failed to load OAuth credentials");
+            tracing::warn!(?e, "failed to load OAuth credentials from database");
         }
 
         let profile_cache = Arc::new(RwLock::new(None));

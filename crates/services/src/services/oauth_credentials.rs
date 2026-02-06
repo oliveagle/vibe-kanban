@@ -4,8 +4,6 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
-/// OAuth credentials containing the JWT tokens issued by the remote OAuth service.
-/// The `access_token` is short-lived; `refresh_token` allows minting a new pair.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Credentials {
     pub access_token: Option<String>,
@@ -37,8 +35,6 @@ impl From<StoredCredentials> for Credentials {
     }
 }
 
-/// Service for managing OAuth credentials (JWT tokens) in memory and persistent storage.
-/// The token is loaded into memory on startup and persisted to disk/keychain on save.
 pub struct OAuthCredentials {
     backend: Backend,
     inner: RwLock<Option<Credentials>>,
@@ -48,6 +44,13 @@ impl OAuthCredentials {
     pub fn new(path: PathBuf) -> Self {
         Self {
             backend: Backend::detect(path),
+            inner: RwLock::new(None),
+        }
+    }
+
+    pub fn with_pool(pool: sqlx::PgPool, user_id: uuid::Uuid) -> Self {
+        Self {
+            backend: Backend::Database(DatabaseBackend { pool, user_id }),
             inner: RwLock::new(None),
         }
     }
@@ -86,12 +89,21 @@ trait StoreBackend {
 
 enum Backend {
     File(FileBackend),
+    Database(DatabaseBackend),
     #[cfg(target_os = "macos")]
     Keychain(KeychainBackend),
 }
 
 impl Backend {
     fn detect(path: PathBuf) -> Self {
+        if std::env::var("OAUTH_CREDENTIALS_DATABASE")
+            .map(|v| v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
+            tracing::info!("OAuth credentials backend: database (deferred)");
+            return Backend::File(FileBackend { path });
+        }
+
         #[cfg(target_os = "macos")]
         {
             let use_file = match std::env::var("OAUTH_CREDENTIALS_BACKEND") {
@@ -119,6 +131,7 @@ impl StoreBackend for Backend {
     async fn load(&self) -> std::io::Result<Option<StoredCredentials>> {
         match self {
             Backend::File(b) => b.load().await,
+            Backend::Database(b) => b.load().await,
             #[cfg(target_os = "macos")]
             Backend::Keychain(b) => b.load().await,
         }
@@ -127,6 +140,7 @@ impl StoreBackend for Backend {
     async fn save(&self, creds: &StoredCredentials) -> std::io::Result<()> {
         match self {
             Backend::File(b) => b.save(creds).await,
+            Backend::Database(b) => b.save(creds).await,
             #[cfg(target_os = "macos")]
             Backend::Keychain(b) => b.save(creds).await,
         }
@@ -135,6 +149,7 @@ impl StoreBackend for Backend {
     async fn clear(&self) -> std::io::Result<()> {
         match self {
             Backend::File(b) => b.clear().await,
+            Backend::Database(b) => b.clear().await,
             #[cfg(target_os = "macos")]
             Backend::Keychain(b) => b.clear().await,
         }
@@ -193,6 +208,65 @@ impl FileBackend {
 
     async fn clear(&self) -> std::io::Result<()> {
         let _ = std::fs::remove_file(&self.path);
+        Ok(())
+    }
+}
+
+struct DatabaseBackend {
+    pool: sqlx::PgPool,
+    user_id: uuid::Uuid,
+}
+
+impl DatabaseBackend {
+    async fn load(&self) -> std::io::Result<Option<StoredCredentials>> {
+        let result = sqlx::query!(
+            r#"
+            SELECT refresh_token
+            FROM user_credentials
+            WHERE user_id = $1
+            "#,
+            self.user_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| std::io::Error::other(format!("Database error: {}", e)))?;
+
+        Ok(result.map(|row| StoredCredentials {
+            refresh_token: row.refresh_token,
+        }))
+    }
+
+    async fn save(&self, creds: &StoredCredentials) -> std::io::Result<()> {
+        sqlx::query!(
+            r#"
+            INSERT INTO user_credentials (user_id, refresh_token, expires_at)
+            VALUES ($1, $2, NULL)
+            ON CONFLICT (user_id) DO UPDATE SET
+                refresh_token = EXCLUDED.refresh_token,
+                updated_at = NOW()
+            "#,
+            self.user_id,
+            creds.refresh_token
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| std::io::Error::other(format!("Database error: {}", e)))?;
+
+        Ok(())
+    }
+
+    async fn clear(&self) -> std::io::Result<()> {
+        sqlx::query!(
+            r#"
+            DELETE FROM user_credentials
+            WHERE user_id = $1
+            "#,
+            self.user_id
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| std::io::Error::other(format!("Database error: {}", e)))?;
+
         Ok(())
     }
 }
