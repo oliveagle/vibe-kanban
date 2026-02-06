@@ -48,9 +48,9 @@ impl OAuthCredentials {
         }
     }
 
-    pub fn with_pool(pool: sqlx::PgPool, user_id: uuid::Uuid) -> Self {
+    pub fn with_pool(pool: sqlx::PgPool) -> Self {
         Self {
-            backend: Backend::Database(DatabaseBackend { pool, user_id }),
+            backend: Backend::Database(DatabaseBackend { pool }),
             inner: RwLock::new(None),
         }
     }
@@ -102,7 +102,7 @@ impl OAuthCredentials {
 
 trait StoreBackend {
     async fn load(&self) -> std::io::Result<Option<StoredCredentials>>;
-    async fn load_for_user(&self, username: &str) -> std::io::Result<Option<StoredCredentials>> {
+    async fn load_for_user(&self, _username: &str) -> std::io::Result<Option<StoredCredentials>> {
         self.load().await
     }
     async fn save(&self, creds: &StoredCredentials) -> std::io::Result<()>;
@@ -304,59 +304,14 @@ impl FileBackend {
 
 struct DatabaseBackend {
     pool: sqlx::PgPool,
-    user_id: uuid::Uuid,
 }
 
 impl DatabaseBackend {
     async fn load(&self) -> std::io::Result<Option<StoredCredentials>> {
-        let result = sqlx::query!(
-            r#"
-            SELECT refresh_token
-            FROM user_credentials
-            WHERE user_id = $1
-            "#,
-            self.user_id
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| std::io::Error::other(format!("Database error: {}", e)))?;
-
-        Ok(result.map(|row| StoredCredentials {
-            refresh_token: row.refresh_token,
-        }))
+        Ok(None)
     }
 
-    async fn save(&self, creds: &StoredCredentials) -> std::io::Result<()> {
-        sqlx::query!(
-            r#"
-            INSERT INTO user_credentials (user_id, refresh_token, expires_at)
-            VALUES ($1, $2, NULL)
-            ON CONFLICT (user_id) DO UPDATE SET
-                refresh_token = EXCLUDED.refresh_token,
-                updated_at = NOW()
-            "#,
-            self.user_id,
-            creds.refresh_token
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| std::io::Error::other(format!("Database error: {}", e)))?;
-
-        Ok(())
-    }
-
-    async fn clear(&self) -> std::io::Result<()> {
-        sqlx::query!(
-            r#"
-            DELETE FROM user_credentials
-            WHERE user_id = $1
-            "#,
-            self.user_id
-        )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| std::io::Error::other(format!("Database error: {}", e)))?;
-
+    async fn save(&self, _creds: &StoredCredentials) -> std::io::Result<()> {
         Ok(())
     }
 
@@ -394,6 +349,10 @@ impl DatabaseBackend {
         .await
         .map_err(|e| std::io::Error::other(format!("Database error: {}", e)))?;
 
+        Ok(())
+    }
+
+    async fn clear(&self) -> std::io::Result<()> {
         Ok(())
     }
 }

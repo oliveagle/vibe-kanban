@@ -126,9 +126,9 @@ impl Deployment for LocalDeployment {
 
         let share_config = ShareConfig::from_env();
 
-        let oauth_credentials = Arc::new(OAuthCredentials::new(credentials_path()));
+        let oauth_credentials = Arc::new(OAuthCredentials::with_pool(db.pool.clone()));
         if let Err(e) = oauth_credentials.load().await {
-            tracing::warn!(?e, "failed to load OAuth credentials");
+            tracing::warn!(?e, "failed to load OAuth credentials from database");
         }
 
         let profile_cache = Arc::new(RwLock::new(None));
