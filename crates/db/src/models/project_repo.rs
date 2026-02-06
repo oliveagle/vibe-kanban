@@ -73,7 +73,7 @@ impl ProjectRepo {
                       copy_files,
                       parallel_setup_script as "parallel_setup_script!: bool"
                FROM project_repos
-               WHERE project_id = "#,
+               WHERE project_id = $1"#,
             project_id
         )
         .fetch_all(pool)
@@ -94,7 +94,7 @@ impl ProjectRepo {
                       copy_files,
                       parallel_setup_script as "parallel_setup_script!: bool"
                FROM project_repos
-               WHERE repo_id = "#,
+               WHERE repo_id = $1"#,
             repo_id
         )
         .fetch_all(pool)
@@ -117,7 +117,7 @@ impl ProjectRepo {
                       pr.parallel_setup_script as "parallel_setup_script!: bool"
                FROM project_repos pr
                JOIN repos r ON r.id = pr.repo_id
-               WHERE pr.project_id = ?
+               WHERE pr.project_id = $1
                ORDER BY r.display_name ASC"#,
             project_id
         )
@@ -134,12 +134,12 @@ impl ProjectRepo {
             r#"SELECT r.id as "id!: Uuid",
                       r.path,
                       r.name,
-                      r.display_name, 
+                      r.display_name,
                       r.created_at as "created_at!: DateTime<Utc>",
                       r.updated_at as "updated_at!: DateTime<Utc>"
                FROM repos r
                JOIN project_repos pr ON r.id = pr.repo_id
-               WHERE pr.project_id = ?
+               WHERE pr.project_id = $1
                ORDER BY r.display_name ASC"#,
             project_id
         )
@@ -162,7 +162,7 @@ impl ProjectRepo {
                       copy_files,
                       parallel_setup_script as "parallel_setup_script!: bool"
                FROM project_repos
-               WHERE project_id = ? AND repo_id = ?2"#,
+               WHERE project_id = $1 AND repo_id = $2"#,
             project_id,
             repo_id
         )
@@ -188,7 +188,7 @@ impl ProjectRepo {
         let id = Uuid::new_v4();
         sqlx::query!(
             r#"INSERT INTO project_repos (id, project_id, repo_id)
-               VALUES (?, ?2, ?3)"#,
+               VALUES ($1, $2, $3)"#,
             id,
             project_id,
             repo.id
@@ -205,7 +205,7 @@ impl ProjectRepo {
         repo_id: Uuid,
     ) -> Result<(), ProjectRepoError> {
         let result: sqlx::postgres::PgQueryResult = sqlx::query!(
-            "DELETE FROM project_repos WHERE project_id = ? AND repo_id = ?2",
+            "DELETE FROM project_repos WHERE project_id = $1 AND repo_id = $2",
             project_id,
             repo_id
         )
@@ -228,7 +228,7 @@ impl ProjectRepo {
         sqlx::query_as!(
             ProjectRepo,
             r#"INSERT INTO project_repos (id, project_id, repo_id)
-               VALUES (?, ?2, ?3)
+               VALUES ($1, $2, $3)
                RETURNING id as "id!: Uuid",
                          project_id as "project_id!: Uuid",
                          repo_id as "repo_id!: Uuid",
@@ -263,11 +263,11 @@ impl ProjectRepo {
         sqlx::query_as!(
             ProjectRepo,
             r#"UPDATE project_repos
-               SET setup_script = ?,
-                   cleanup_script = ?2,
-                   copy_files = ?3,
-                   parallel_setup_script = ?4
-               WHERE project_id = ?5 AND repo_id = ?6
+               SET setup_script = $1,
+                   cleanup_script = $2,
+                   copy_files = $3,
+                   parallel_setup_script = $4
+               WHERE project_id = $5 AND repo_id = $6
                RETURNING id as "id!: Uuid",
                          project_id as "project_id!: Uuid",
                          repo_id as "repo_id!: Uuid",

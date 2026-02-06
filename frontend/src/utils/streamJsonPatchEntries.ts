@@ -1,5 +1,6 @@
 // streamJsonPatchEntries.ts - WebSocket JSON patch streaming utility
 import { applyPatch, type Operation } from 'rfc6902';
+import { debugLog } from '@/lib/api';
 
 type PatchContainer<E = unknown> = { entries: E[] };
 
@@ -103,6 +104,11 @@ export function streamJsonPatchEntries<E = unknown>(
 
   ws.addEventListener('error', (err) => {
     connected = false;
+    debugLog('error', `WebSocket error for ${url}`, JSON.stringify({
+      url: wsUrl,
+      readyState: ws.readyState,
+      error: err.type
+    }));
     opts.onError?.(err);
   });
 

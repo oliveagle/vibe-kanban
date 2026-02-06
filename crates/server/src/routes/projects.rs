@@ -339,7 +339,8 @@ pub async fn open_project_in_editor(
 
         repositories
             .first()
-            .map(|r| r.path.clone())
+            .and_then(|r| r.path.clone())
+            .map(PathBuf::from)
             .ok_or_else(|| ApiError::BadRequest("Project has no repositories".to_string()))?
     };
 

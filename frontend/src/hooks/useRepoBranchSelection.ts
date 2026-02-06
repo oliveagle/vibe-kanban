@@ -65,8 +65,8 @@ export function useRepoBranchSelection({
 
       return {
         repoId: repo.id,
-        repoDisplayName: repo.display_name,
-        targetBranch,
+        repoDisplayName: repo.display_name ?? repo.name,
+        targetBranch: targetBranch ?? '',
         branches,
       };
     });

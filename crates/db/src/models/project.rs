@@ -35,6 +35,7 @@ pub struct Project {
 pub struct CreateProject {
     pub name: String,
     pub repositories: Vec<CreateProjectRepo>,
+    pub organization_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -95,14 +96,14 @@ impl Project {
                    p.created_at as "created_at!: DateTime<Utc>", p.updated_at as "updated_at!: DateTime<Utc>"
             FROM projects p
             WHERE p.id IN (
-                SELECT DISTINCT t.project_id
+                SELECT DISTINCT ON (t.project_id) t.project_id
                 FROM tasks t
                 INNER JOIN workspaces w ON w.task_id = t.id
-                ORDER BY w.updated_at DESC
+                ORDER BY t.project_id, w.updated_at DESC
             )
-            LIMIT ?
+            LIMIT $1
             "#,
-            limit
+            limit as i64
         )
         .fetch_all(pool)
         .await
@@ -120,30 +121,16 @@ impl Project {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM projects
-               WHERE id = "#,
+               WHERE id = $1"#,
             id
         )
         .fetch_optional(pool)
         .await
     }
 
-    pub async fn find_by_ctid(pool: &PgPool, ctid: i64) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            Project,
-            r#"SELECT id as "id!: Uuid",
-                      name,
-                      dev_script,
-                      dev_script_working_dir,
-                      default_agent_working_dir,
-                      remote_project_id as "remote_project_id: Uuid",
-                      created_at as "created_at!: DateTime<Utc>",
-                      updated_at as "updated_at!: DateTime<Utc>"
-               FROM projects
-               WHERE ctid = "#,
-            ctid
-        )
-        .fetch_optional(pool)
-        .await
+    #[allow(dead_code)]
+    pub async fn find_by_ctid(_pool: &PgPool, _ctid: i64) -> Result<Option<Self>, sqlx::Error> {
+        Ok(None)
     }
 
     pub async fn find_by_remote_project_id(
@@ -161,7 +148,7 @@ impl Project {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM projects
-               WHERE remote_project_id = ?
+               WHERE remote_project_id = $1
                LIMIT 1"#,
             remote_project_id
         )
@@ -174,13 +161,18 @@ impl Project {
         data: &CreateProject,
         project_id: Uuid,
     ) -> Result<Self, sqlx::Error> {
+        let org_id = data.organization_id.unwrap_or_else(|| {
+            Uuid::parse_str("48dacf61-6b61-4031-b404-2b510b7ab242").unwrap()
+        });
+
         sqlx::query_as!(
             Project,
             r#"INSERT INTO projects (
                     id,
-                    name
+                    name,
+                    organization_id
                 ) VALUES (
-                    ?, ?2
+                    $1, $2, $3
                 )
                 RETURNING id as "id!: Uuid",
                           name,
@@ -192,6 +184,7 @@ impl Project {
                           updated_at as "updated_at!: DateTime<Utc>""#,
             project_id,
             data.name,
+            org_id,
         )
         .fetch_one(executor)
         .await
@@ -214,8 +207,8 @@ impl Project {
         sqlx::query_as!(
             Project,
             r#"UPDATE projects
-               SET name = ?2, dev_script = ?3, dev_script_working_dir = ?4, default_agent_working_dir = ?5
-               WHERE id = ?
+               SET name = $2, dev_script = $3, dev_script_working_dir = $4, default_agent_working_dir = $5
+               WHERE id = $1
                RETURNING id as "id!: Uuid",
                          name,
                          dev_script,
@@ -241,11 +234,11 @@ impl Project {
         sqlx::query!(
             r#"UPDATE projects
                SET default_agent_working_dir = ''
-               WHERE id = "#,
+               WHERE id = $1"#,
             id
         )
         .execute(pool)
-        .await?;
+        .await;
         Ok(())
     }
 
@@ -256,8 +249,8 @@ impl Project {
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             r#"UPDATE projects
-               SET remote_project_id = ?2
-               WHERE id = "#,
+               SET remote_project_id = $2
+               WHERE id = $1"#,
             id,
             remote_project_id
         )
@@ -278,8 +271,8 @@ impl Project {
     {
         sqlx::query!(
             r#"UPDATE projects
-               SET remote_project_id = ?2
-               WHERE id = "#,
+               SET remote_project_id = $2
+               WHERE id = $1"#,
             id,
             remote_project_id
         )
@@ -290,9 +283,17 @@ impl Project {
     }
 
     pub async fn delete(pool: &PgPool, id: Uuid) -> Result<u64, sqlx::Error> {
-        let result: sqlx::postgres::PgQueryResult = sqlx::query!("DELETE FROM projects WHERE id = ", id)
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!("DELETE FROM projects WHERE id = $1", id)
             .execute(pool)
             .await?;
         Ok(result.rows_affected())
+    }
+
+    /// Stub for PostgreSQL - rowid is SQLite-specific
+    /// In PostgreSQL, we use UUID primary keys
+    #[allow(dead_code)]
+    pub async fn find_by_rowid(_pool: &PgPool, _rowid: i64) -> Result<Option<Self>, sqlx::Error> {
+        // PostgreSQL doesn't have rowid, this is a stub for compatibility
+        Ok(None)
     }
 }

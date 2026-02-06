@@ -324,8 +324,8 @@ export function ProjectSettings() {
     setRepoError(null);
     try {
       const newRepo = await projectsApi.addRepository(selectedProjectId, {
-        display_name: repo.display_name,
-        git_repo_path: repo.path,
+        display_name: repo.display_name ?? repo.name,
+        git_repo_path: repo.path ?? '',
       });
       setRepositories((prev) => [...prev, newRepo]);
       queryClient.invalidateQueries({

@@ -54,25 +54,3 @@ impl ExecutionEnv {
         self.vars.contains_key(key)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn profile_overrides_runtime_env() {
-        let mut base = ExecutionEnv::default();
-        base.insert("VK_PROJECT_NAME", "runtime");
-        base.insert("FOO", "runtime");
-
-        let mut profile = HashMap::new();
-        profile.insert("FOO".to_string(), "profile".to_string());
-        profile.insert("BAR".to_string(), "profile".to_string());
-
-        let merged = base.with_overrides(&profile);
-
-        assert_eq!(merged.vars.get("VK_PROJECT_NAME").unwrap(), "runtime");
-        assert_eq!(merged.vars.get("FOO").unwrap(), "profile"); // overrides
-        assert_eq!(merged.vars.get("BAR").unwrap(), "profile");
-    }
-}

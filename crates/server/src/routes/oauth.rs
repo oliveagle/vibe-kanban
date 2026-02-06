@@ -394,25 +394,30 @@ async fn get_current_user(
     }
 
     // Fall back to remote client (OAuth)
-    let remote_client = deployment.remote_client()?;
+    match deployment.remote_client() {
+        Ok(remote_client) => {
+            // Get the access token from remote client
+            let access_token = remote_client
+                .access_token()
+                .await
+                .map_err(|_| ApiError::Unauthorized)?;
 
-    // Get the access token from remote client
-    let access_token = remote_client
-        .access_token()
-        .await
-        .map_err(|_| ApiError::Unauthorized)?;
+            // Extract user ID from the JWT token's 'sub' claim
+            let user_id = utils::jwt::extract_subject(&access_token)
+                .map_err(|e| {
+                    tracing::error!("Failed to extract user ID from token: {}", e);
+                    ApiError::Unauthorized
+                })?
+                .to_string();
 
-    // Extract user ID from the JWT token's 'sub' claim
-    let user_id = utils::jwt::extract_subject(&access_token)
-        .map_err(|e| {
-            tracing::error!("Failed to extract user ID from token: {}", e);
-            ApiError::Unauthorized
-        })?
-        .to_string();
-
-    Ok(ResponseJson(ApiResponse::success(CurrentUserResponse {
-        user_id,
-    })))
+            Ok(ResponseJson(ApiResponse::success(CurrentUserResponse {
+                user_id,
+            })))
+        }
+        Err(_) => Ok(ResponseJson(ApiResponse::success(CurrentUserResponse {
+            user_id: "local-user".to_string(),
+        }))),
+    }
 }
 
 fn generate_secret() -> String {

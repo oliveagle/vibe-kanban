@@ -4,6 +4,8 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
+use futures::executor::block_on;
+
 use codex_app_server_protocol::{
     JSONRPCNotification, JSONRPCResponse, NewConversationResponse, ServerNotification,
 };
@@ -388,13 +390,13 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                 if let ServerNotification::SessionConfigured(session_configured) =
                     server_notification
                 {
-                    msg_store.push_session_id(session_configured.session_id.to_string());
+                    msg_store.push_session_id(session_configured.session_id.to_string()).await;
                     handle_model_params(
                         session_configured.model,
                         session_configured.reasoning_effort,
                         &msg_store,
                         &entry_index,
-                    );
+                    ).await;
                 };
                 continue;
             } else if let Some(session_id) = line
@@ -403,7 +405,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
             {
                 // Best-effort extraction of session ID from logs in case the JSON parsing fails.
                 // This could happen if the line is truncated due to size limits because it includes the full session history.
-                msg_store.push_session_id(session_id.as_str().to_string());
+                msg_store.push_session_id(session_id.as_str().to_string()).await;
                 continue;
             }
 
@@ -426,13 +428,13 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
             let event = params.msg;
             match event {
                 EventMsg::SessionConfigured(payload) => {
-                    msg_store.push_session_id(payload.session_id.to_string());
+                    msg_store.push_session_id(payload.session_id.to_string()).await;
                     handle_model_params(
                         payload.model,
                         payload.reasoning_effort,
                         &msg_store,
                         &entry_index,
-                    );
+                    ).await;
                 }
                 EventMsg::AgentMessageDelta(AgentMessageDeltaEvent { delta }) => {
                     state.thinking = None;
@@ -519,7 +521,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
 
                     for entry in patch_state.entries.drain(..) {
                         if let Some(index) = entry.index {
-                            msg_store.push_patch(ConversationPatch::remove(index));
+                            msg_store.push_patch(ConversationPatch::remove(index)).await;
                         }
                     }
 
@@ -1028,19 +1030,21 @@ fn handle_jsonrpc_response(
     };
 
     match SessionHandler::extract_session_id_from_rollout_path(response.rollout_path) {
-        Ok(session_id) => msg_store.push_session_id(session_id),
+        Ok(session_id) => {
+            block_on(msg_store.push_session_id(session_id));
+        }
         Err(err) => tracing::error!("failed to extract session id: {err}"),
     }
 
-    handle_model_params(
+    block_on(handle_model_params(
         response.model,
         response.reasoning_effort,
         msg_store,
         entry_index,
-    );
+    ));
 }
 
-fn handle_model_params(
+async fn handle_model_params(
     model: String,
     reasoning_effort: Option<ReasoningEffort>,
     msg_store: &Arc<MsgStore>,

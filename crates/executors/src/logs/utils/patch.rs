@@ -3,10 +3,11 @@ use std::sync::Arc;
 use json_patch::Patch;
 use serde::{Deserialize, Serialize};
 use serde_json::{from_value, json, to_value};
+use tokio::spawn;
 use ts_rs::TS;
 use workspace_utils::{diff::Diff, msg_store::MsgStore};
 
-use crate::logs::{NormalizedEntry, utils::EntryIndexProvider};
+use crate::logs::{utils::EntryIndexProvider, NormalizedEntry};
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, TS)]
 #[serde(rename_all = "lowercase")]
@@ -148,13 +149,18 @@ pub fn upsert_normalized_entry(
     normalized_entry: NormalizedEntry,
     is_new: bool,
 ) {
+    let msg_store = msg_store.clone();
     if is_new {
-        msg_store.push_patch(ConversationPatch::add_normalized_entry(
-            index,
-            normalized_entry,
-        ));
+        spawn(async move {
+            msg_store.push_patch(ConversationPatch::add_normalized_entry(
+                index,
+                normalized_entry,
+            )).await;
+        });
     } else {
-        msg_store.push_patch(ConversationPatch::replace(index, normalized_entry));
+        spawn(async move {
+            msg_store.push_patch(ConversationPatch::replace(index, normalized_entry)).await;
+        });
     }
 }
 

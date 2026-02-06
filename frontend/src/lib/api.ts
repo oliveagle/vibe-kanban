@@ -1319,3 +1319,36 @@ export const queueApi = {
     return handleApiResponse<QueueStatus>(response);
   },
 };
+
+// Debug logging API for frontend errors
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug';
+
+export interface LogEntry {
+  level: LogLevel;
+  message: string;
+  context?: string;
+}
+
+/**
+ * Send frontend logs to backend for debugging
+ * Use this when debugging WebSocket issues, real-time updates, or UI state problems
+ */
+export const debugLog = async (
+  level: LogLevel,
+  message: string,
+  context?: string
+): Promise<void> => {
+  try {
+    const response = await makeRequest('/api/debug/log', {
+      method: 'POST',
+      body: JSON.stringify({ level, message, context }),
+    });
+
+    if (!response.ok) {
+      console.error('[DebugLog] Failed to send log:', response.status);
+    }
+  } catch (e) {
+    // Silent fail to avoid infinite loops
+    console.error('[DebugLog] Error sending log:', e);
+  }
+};

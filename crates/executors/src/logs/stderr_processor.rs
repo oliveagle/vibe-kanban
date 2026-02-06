@@ -56,7 +56,7 @@ pub fn normalize_stderr_logs(msg_store: Arc<MsgStore>, entry_index_provider: Ent
 
         while let Some(Ok(chunk)) = stderr.next().await {
             for patch in processor.process(chunk) {
-                msg_store.push_patch(patch);
+                msg_store.push_patch(patch).await;
             }
         }
     });

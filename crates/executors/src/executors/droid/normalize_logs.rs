@@ -76,7 +76,7 @@ pub fn normalize_logs(
 
             // Extract session ID if not already done
             if !session_id_extracted && let Some(session_id) = droid_json.session_id() {
-                msg_store.push_session_id(session_id.to_string());
+                msg_store.push_session_id(session_id.to_string()).await;
                 session_id_extracted = true;
             }
 
@@ -696,7 +696,7 @@ fn normalize_stderr_logs(msg_store: Arc<MsgStore>, entry_index_provider: EntryIn
 
         while let Some(Ok(chunk)) = stderr.next().await {
             for patch in processor.process(chunk) {
-                msg_store.push_patch(patch);
+                msg_store.push_patch(patch).await;
             }
         }
     });

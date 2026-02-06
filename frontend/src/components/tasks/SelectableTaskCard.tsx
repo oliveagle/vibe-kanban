@@ -45,17 +45,7 @@ export function SelectableTaskCard({
   const [isNavigatingToParent, setIsNavigatingToParent] = useState(false);
   const { isSignedIn } = useAuth();
 
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    // Handle selection checkbox separately
-    if ((e.target as HTMLElement).closest('[data-selection-checkbox]')) {
-      return;
-    }
-    
-    // Handle actions dropdown separately  
-    if ((e.target as HTMLElement).closest('[data-actions-dropdown]')) {
-      return;
-    }
-
+  const handleClick = useCallback(() => {
     if (selectionMode) {
       onSelectionChange(task, !isSelected);
     } else {
@@ -128,7 +118,7 @@ export function SelectableTaskCard({
             data-selection-checkbox
             checked={isSelected}
             onCheckedChange={handleSelectionChange}
-            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
             className="bg-background/80 backdrop-blur-sm border-2"
           />
         </div>
@@ -158,7 +148,7 @@ export function SelectableTaskCard({
                 <Button
                   variant="icon"
                   onClick={handleParentClick}
-                  onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
                   onMouseDown={(e) => e.stopPropagation()}
                   disabled={isNavigatingToParent}
                   title={t('navigateToParent')}

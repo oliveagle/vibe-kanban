@@ -213,7 +213,7 @@ impl Task {
     )                               AS "executor!: String"
 
 FROM tasks t
-WHERE t.project_id = ?
+WHERE t.project_id = $1
 ORDER BY t.created_at DESC"#,
             project_id
         )
@@ -248,23 +248,16 @@ ORDER BY t.created_at DESC"#,
             Task,
             r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks
-               WHERE id = "#,
+               WHERE id = $1"#,
             id
         )
         .fetch_optional(pool)
         .await
     }
 
-    pub async fn find_by_ctid(pool: &PgPool, ctid: i64) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
-               FROM tasks
-               WHERE ctid = "#,
-            ctid
-        )
-        .fetch_optional(pool)
-        .await
+    #[allow(dead_code)]
+    pub async fn find_by_ctid(_pool: &PgPool, _ctid: i64) -> Result<Option<Self>, sqlx::Error> {
+        Ok(None)
     }
 
     pub async fn find_by_shared_task_id<'e, E>(
@@ -278,7 +271,7 @@ ORDER BY t.created_at DESC"#,
             Task,
             r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks
-               WHERE shared_task_id = ?
+               WHERE shared_task_id = $1
                LIMIT 1"#,
             shared_task_id
         )
@@ -306,13 +299,13 @@ ORDER BY t.created_at DESC"#,
         sqlx::query_as!(
             Task,
             r#"INSERT INTO tasks (id, project_id, title, description, status, parent_workspace_id, shared_task_id)
-               VALUES (?, ?2, ?3, ?4, ?5, ?6, ?7)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)
                RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             task_id,
             data.project_id,
             data.title,
             data.description,
-            status,
+            status.to_string(),
             data.parent_workspace_id,
             data.shared_task_id
         )
@@ -332,14 +325,14 @@ ORDER BY t.created_at DESC"#,
         sqlx::query_as!(
             Task,
             r#"UPDATE tasks
-               SET title = ?3, description = ?4, status = ?5, parent_workspace_id = ?6
-               WHERE id = ? AND project_id = ?2
+               SET title = $3, description = $4, status = $5, parent_workspace_id = $6
+               WHERE id = $1 AND project_id = $2
                RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             id,
             project_id,
             title,
             description,
-            status,
+            status.to_string(),
             parent_workspace_id
         )
         .fetch_one(pool)
@@ -352,9 +345,9 @@ ORDER BY t.created_at DESC"#,
         status: TaskStatus,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            "UPDATE tasks SET status = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ",
+            "UPDATE tasks SET status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
             id,
-            status
+            status.to_string()
         )
         .execute(pool)
         .await?;
@@ -368,7 +361,7 @@ ORDER BY t.created_at DESC"#,
         parent_workspace_id: Option<Uuid>,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            "UPDATE tasks SET parent_workspace_id = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ",
+            "UPDATE tasks SET parent_workspace_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
             task_id,
             parent_workspace_id
         )
@@ -387,7 +380,7 @@ ORDER BY t.created_at DESC"#,
         E: Executor<'e, Database = Postgres>,
     {
         let result: sqlx::postgres::PgQueryResult = sqlx::query!(
-            "UPDATE tasks SET parent_workspace_id = NULL WHERE parent_workspace_id = ",
+            "UPDATE tasks SET parent_workspace_id = NULL WHERE parent_workspace_id = $1",
             workspace_id
         )
         .execute(executor)
@@ -408,7 +401,7 @@ ORDER BY t.created_at DESC"#,
             r#"UPDATE tasks
                SET shared_task_id = NULL
                WHERE project_id IN (
-                   SELECT id FROM projects WHERE remote_project_id = ?
+                   SELECT id FROM projects WHERE remote_project_id = $1
                )"#,
             remote_project_id
         )
@@ -421,7 +414,7 @@ ORDER BY t.created_at DESC"#,
     where
         E: Executor<'e, Database = Postgres>,
     {
-        let result: sqlx::postgres::PgQueryResult = sqlx::query!("DELETE FROM tasks WHERE id = ", id)
+        let result: sqlx::postgres::PgQueryResult = sqlx::query!("DELETE FROM tasks WHERE id = $1", id)
             .execute(executor)
             .await?;
         Ok(result.rows_affected())
@@ -436,7 +429,7 @@ ORDER BY t.created_at DESC"#,
         E: Executor<'e, Database = Postgres>,
     {
         sqlx::query!(
-            "UPDATE tasks SET shared_task_id = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ",
+            "UPDATE tasks SET shared_task_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
             id,
             shared_task_id
         )
@@ -476,7 +469,7 @@ ORDER BY t.created_at DESC"#,
         updates: &BulkUpdateTasks,
     ) -> Result<u64, sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
         if updates.task_ids.is_empty() {
             return Ok(0);
@@ -527,14 +520,14 @@ ORDER BY t.created_at DESC"#,
         }
         separated.push_unseparated(")");
 
-        let result = query_builder.build().execute(executor).await?;
+        let result: sqlx::postgres::PgQueryResult = query_builder.build().execute(executor).await?;
         Ok(result.rows_affected())
     }
 
     /// Bulk delete tasks by IDs
     pub async fn bulk_delete<'e, E>(executor: E, task_ids: &[Uuid]) -> Result<u64, sqlx::Error>
     where
-        E: Executor<'e, Database = Sqlite>,
+        E: Executor<'e, Database = Postgres>,
     {
         if task_ids.is_empty() {
             return Ok(0);
@@ -547,18 +540,15 @@ ORDER BY t.created_at DESC"#,
         }
         separated.push_unseparated(")");
 
-        let result = query_builder.build().execute(executor).await?;
+        let result: sqlx::postgres::PgQueryResult = query_builder.build().execute(executor).await?;
         Ok(result.rows_affected())
     }
 
     /// Check if tasks have running execution processes
-    pub async fn bulk_check_running_processes<'e, E>(
-        executor: E,
+    pub async fn bulk_check_running_processes(
+        pool: &PgPool,
         task_ids: &[Uuid],
-    ) -> Result<Vec<Uuid>, sqlx::Error>
-    where
-        E: Executor<'e, Database = Sqlite>,
-    {
+    ) -> Result<Vec<Uuid>, sqlx::Error> {
         if task_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -578,13 +568,13 @@ ORDER BY t.created_at DESC"#,
                     WHERE ep.status = 'running'
                     AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
                     AND t.id = $1
-                ) as "exists!: i64"#,
+                ) as exists"#,
                 task_id
             )
-            .fetch_one(executor)
+            .fetch_one(pool)
             .await?;
 
-            if has_running != 0 {
+            if has_running.unwrap_or(false) {
                 running_tasks.push(task_id);
             }
         }
@@ -601,7 +591,7 @@ ORDER BY t.created_at DESC"#,
             Task,
             r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", shared_task_id as "shared_task_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks
-               WHERE parent_workspace_id = ?
+               WHERE parent_workspace_id = $1
                ORDER BY created_at DESC"#,
             workspace_id,
         )
@@ -641,5 +631,13 @@ ORDER BY t.created_at DESC"#,
             current_workspace: workspace.clone(),
             children,
         })
+    }
+
+    /// Stub for PostgreSQL - rowid is SQLite-specific
+    /// In PostgreSQL, we use UUID primary keys
+    #[allow(dead_code)]
+    pub async fn find_by_rowid(_pool: &PgPool, _rowid: i64) -> Result<Option<Self>, sqlx::Error> {
+        // PostgreSQL doesn't have rowid, this is a stub for compatibility
+        Ok(None)
     }
 }

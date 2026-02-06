@@ -173,8 +173,35 @@ EOF
 ```
 
 ## Testing Guidelines
-- Rust: prefer unit tests alongside code (`#[cfg(test)]`), run `cargo test --workspace`. Add tests for new logic and edge cases.
-- Frontend: ensure `pnpm run check` and `pnpm run lint` pass. If adding runtime logic, include lightweight tests (e.g., Vitest) in the same directory.
+
+### Rust Tests
+
+**Test Organization:**
+- **Integration tests** must be placed in `crates/{package}/tests/` directory as separate files
+- Do NOT write tests inside source files (no `#[cfg(test)]` modules in `src/`)
+- Each test file should focus on a specific module or functionality
+
+**Test File Naming:**
+- `crates/utils/tests/msg_store_tests.rs` - tests for `msg_store` module
+- `crates/server/tests/task_server_tests.rs` - tests for `task_server` module
+- `crates/executors/tests/session_manager_tests.rs` - tests for `session` module
+
+**Running Tests:**
+```bash
+cargo test --workspace           # Run all tests
+cargo test --package utils       # Run tests for specific package
+cargo test test_name_pattern     # Run specific test
+```
+
+**Test Best Practices:**
+- Use `tokio::test` for async tests
+- Use temporary directories for file I/O tests ( cleaned up automatically)
+- Mock external dependencies (HTTP clients, etc.)
+- Test edge cases: empty inputs, errors, concurrency
+
+### Frontend Tests
+- Ensure `pnpm run check` and `pnpm run lint` pass
+- If adding runtime logic, include lightweight tests (e.g., Vitest) in the same directory
 
 ## Container Architecture
 
@@ -350,6 +377,53 @@ To use these defaults, ensure:
 - When using podman-compose, containers may not resolve each other by service name.
 - Frontend nginx must proxy to `host.containers.internal:37825` (host port) instead of `backend:3000`.
 - This is handled automatically in `nginx-frontend.conf`.
+
+## Frontend Debugging
+
+### Backend Debug Log API
+
+When debugging frontend issues (especially WebSocket connections, real-time updates, or UI state problems), use the backend debug log API to send logs from the frontend to the backend logs.
+
+**API Endpoint:** `POST /api/debug/log`
+
+**Request Format:**
+```json
+{
+  "level": "error|warn|info|debug",
+  "message": "日志消息",
+  "context": "可选的上下文信息"
+}
+```
+
+**Example Usage:**
+```javascript
+// Send frontend error to backend logs
+fetch('/api/debug/log', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    level: 'error',
+    message: 'WebSocket connection failed',
+    context: 'execution process: 7747af7a-c911-4e96-8587-910b6d7c8f1b'
+  })
+});
+```
+
+**When to use:**
+- WebSocket connection errors
+- Real-time update failures
+- UI state synchronization issues
+- Any frontend error that needs backend context
+
+**Viewing logs:**
+```bash
+# View backend logs in real-time
+just dev-srv-logs
+# or
+podman logs -f vibe-kanban-backend-dev
+```
+
+Look for `[FRONTEND]` prefix in the logs to identify frontend-generated log entries.
 
 ## Security & Config Tips
 - Use `.env` for local overrides; never commit secrets. Key envs: `FRONTEND_PORT`, `BACKEND_PORT`, `HOST` 

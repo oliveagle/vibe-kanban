@@ -458,28 +458,24 @@ pub async fn bulk_update_tasks(
     let affected_rows = Task::bulk_update(&mut *tx, &payload).await?;
 
     // Handle shared task updates if any
-    let updated_tasks: Result<Vec<Task>, _> = futures::future::join_all(
+    let updated_tasks: Vec<Result<Option<Task>, sqlx::Error>> = futures_util::future::join_all(
         payload
             .task_ids
             .iter()
             .map(|&id| Task::find_by_id(&deployment.db().pool, id)),
     )
-    .await
-    .into_iter()
-    .collect();
+    .await;
 
-    if let Ok(tasks) = updated_tasks {
-        if let Ok(publisher) = deployment.share_publisher() {
-            for task in tasks {
-                if let Some(task) = task {
-                    if task.shared_task_id.is_some() {
-                        if let Err(e) = publisher.update_shared_task(&task).await {
-                            tracing::warn!(
-                                "Failed to broadcast shared task update for {}: {}",
-                                task.id,
-                                e
-                            );
-                        }
+    if let Ok(publisher) = deployment.share_publisher() {
+        for task_result in updated_tasks {
+            if let Ok(Some(task)) = task_result {
+                if task.shared_task_id.is_some() {
+                    if let Err(e) = publisher.update_shared_task(&task).await {
+                        tracing::warn!(
+                            "Failed to broadcast shared task update for {}: {}",
+                            task.id,
+                            e
+                        );
                     }
                 }
             }
@@ -529,9 +525,15 @@ pub async fn bulk_delete_tasks(
             ApiError::Workspace(e)
         })?;
 
-    let repositories =
-        WorkspaceRepo::find_unique_repos_for_tasks(&deployment.db().pool, &payload.task_ids)
-            .await?;
+    // Collect unique repos for all tasks
+    let mut all_repos = Vec::new();
+    for task_id in &payload.task_ids {
+        let repos = WorkspaceRepo::find_unique_repos_for_task(&deployment.db().pool, *task_id).await?;
+        all_repos.extend(repos);
+    }
+    // Deduplicate repos by id
+    let mut seen = std::collections::HashSet::new();
+    let repositories: Vec<_> = all_repos.into_iter().filter(|r| seen.insert(r.id)).collect();
 
     // Collect workspace directories that need cleanup
     let workspace_dirs: Vec<PathBuf> = attempts
@@ -540,28 +542,24 @@ pub async fn bulk_delete_tasks(
         .collect();
 
     // Check for shared tasks
-    let tasks: Result<Vec<Task>, _> = futures::future::join_all(
+    let tasks: Vec<Result<Option<Task>, sqlx::Error>> = futures_util::future::join_all(
         payload
             .task_ids
             .iter()
             .map(|&id| Task::find_by_id(&deployment.db().pool, id)),
     )
-    .await
-    .into_iter()
-    .collect();
+    .await;
 
-    if let Ok(tasks) = tasks {
-        if let Ok(publisher) = deployment.share_publisher() {
-            for task in tasks {
-                if let Some(task) = task {
-                    if let Some(shared_task_id) = task.shared_task_id {
-                        if let Err(e) = publisher.delete_shared_task(shared_task_id).await {
-                            tracing::warn!(
-                                "Failed to broadcast shared task deletion for {}: {}",
-                                task.id,
-                                e
-                            );
-                        }
+    if let Ok(publisher) = deployment.share_publisher() {
+        for task_result in tasks {
+            if let Ok(Some(task)) = task_result {
+                if let Some(shared_task_id) = task.shared_task_id {
+                    if let Err(e) = publisher.delete_shared_task(shared_task_id).await {
+                        tracing::warn!(
+                            "Failed to broadcast shared task deletion for {}: {}",
+                            task.id,
+                            e
+                        );
                     }
                 }
             }

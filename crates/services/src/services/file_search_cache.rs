@@ -196,7 +196,7 @@ impl FileSearchCache {
                 .await
                 .map_err(|e| format!("Failed to fetch repositories for project: {e}"))?;
             for repo in repos {
-                repo_paths.push(repo.path);
+                repo_paths.push(repo.path_buf().unwrap_or_default());
             }
         }
 

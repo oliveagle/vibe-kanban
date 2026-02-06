@@ -236,7 +236,7 @@ impl ProjectService {
             "Added repository {} to project {} (path: {})",
             repository.id,
             project_id,
-            repository.path.display()
+            repository.path.as_deref().unwrap_or("<none>")
         );
 
         Ok(repository)
@@ -306,7 +306,7 @@ impl ProjectService {
             .iter()
             .map(|repo| {
                 let repo_name = repo.name.clone();
-                let repo_path = repo.path.clone();
+                let repo_path = repo.path_buf().unwrap_or_default();
                 let query = query.clone();
                 async move {
                     let results = self

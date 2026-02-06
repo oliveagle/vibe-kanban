@@ -1,11 +1,11 @@
 use std::{
     collections::VecDeque,
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
 use axum::response::sse::Event;
 use futures::{StreamExt, TryStreamExt, future};
-use tokio::{sync::broadcast, task::JoinHandle};
+use tokio::{sync::{RwLock, broadcast}, task::JoinHandle};
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::{log_msg::LogMsg, stream_lines::LinesStreamExt};
@@ -47,11 +47,11 @@ impl MsgStore {
         }
     }
 
-    pub fn push(&self, msg: LogMsg) {
+    pub async fn push(&self, msg: LogMsg) {
         let _ = self.sender.send(msg.clone()); // live listeners
         let bytes = msg.approx_bytes();
 
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write().await;
         while inner.total_bytes.saturating_add(bytes) > HISTORY_BYTES {
             if let Some(front) = inner.history.pop_front() {
                 inner.total_bytes = inner.total_bytes.saturating_sub(front.bytes);
@@ -64,33 +64,33 @@ impl MsgStore {
     }
 
     // Convenience
-    pub fn push_stdout<S: Into<String>>(&self, s: S) {
-        self.push(LogMsg::Stdout(s.into()));
+    pub async fn push_stdout<S: Into<String>>(&self, s: S) {
+        self.push(LogMsg::Stdout(s.into())).await;
     }
 
-    pub fn push_stderr<S: Into<String>>(&self, s: S) {
-        self.push(LogMsg::Stderr(s.into()));
+    pub async fn push_stderr<S: Into<String>>(&self, s: S) {
+        self.push(LogMsg::Stderr(s.into())).await;
     }
-    pub fn push_patch(&self, patch: json_patch::Patch) {
-        self.push(LogMsg::JsonPatch(patch));
-    }
-
-    pub fn push_session_id(&self, session_id: String) {
-        self.push(LogMsg::SessionId(session_id));
+    pub async fn push_patch(&self, patch: json_patch::Patch) {
+        self.push(LogMsg::JsonPatch(patch)).await;
     }
 
-    pub fn push_finished(&self) {
-        self.push(LogMsg::Finished);
+    pub async fn push_session_id(&self, session_id: String) {
+        self.push(LogMsg::SessionId(session_id)).await;
+    }
+
+    pub async fn push_finished(&self) {
+        self.push(LogMsg::Finished).await;
     }
 
     pub fn get_receiver(&self) -> broadcast::Receiver<LogMsg> {
         self.sender.subscribe()
     }
 
-    pub fn get_history(&self) -> Vec<LogMsg> {
+    pub async fn get_history(&self) -> Vec<LogMsg> {
         self.inner
             .read()
-            .unwrap()
+            .await
             .history
             .iter()
             .map(|s| s.msg.clone())
@@ -101,7 +101,9 @@ impl MsgStore {
     pub fn history_plus_stream(
         &self,
     ) -> futures::stream::BoxStream<'static, Result<LogMsg, std::io::Error>> {
-        let (history, rx) = (self.get_history(), self.get_receiver());
+        let rx = self.get_receiver();
+        // Get history synchronously for streaming - this is a snapshot
+        let history = futures::executor::block_on(self.get_history());
 
         let hist = futures::stream::iter(history.into_iter().map(Ok::<_, std::io::Error>));
         let live = BroadcastStream::new(rx)
@@ -168,8 +170,8 @@ impl MsgStore {
 
             while let Some(next) = stream.next().await {
                 match next {
-                    Ok(msg) => self.push(msg),
-                    Err(e) => self.push(LogMsg::Stderr(format!("stream error: {e}"))),
+                    Ok(msg) => self.push(msg).await,
+                    Err(e) => self.push(LogMsg::Stderr(format!("stream error: {e}"))).await,
                 }
             }
         })

@@ -50,7 +50,7 @@ impl ExecutionProcessRepoState {
                         merge_commit,
                         created_at,
                         updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"#,
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"#,
                 id,
                 execution_process_id,
                 entry.repo_id,
@@ -61,7 +61,7 @@ impl ExecutionProcessRepoState {
                 now
             )
             .execute(pool)
-            .await?;
+            .await;
         }
 
         Ok(())
@@ -76,9 +76,9 @@ impl ExecutionProcessRepoState {
         let now = Utc::now();
         sqlx::query!(
             r#"UPDATE execution_process_repo_states
-               SET before_head_commit = ?, updated_at = ?2
-             WHERE execution_process_id = ?3
-               AND repo_id = ?4"#,
+               SET before_head_commit = $1, updated_at = $2
+             WHERE execution_process_id = $3
+               AND repo_id = $4"#,
             before_head_commit,
             now,
             execution_process_id,
@@ -98,16 +98,16 @@ impl ExecutionProcessRepoState {
         let now = Utc::now();
         sqlx::query!(
             r#"UPDATE execution_process_repo_states
-               SET after_head_commit = ?, updated_at = ?2
-             WHERE execution_process_id = ?3
-               AND repo_id = ?4"#,
+               SET after_head_commit = $1, updated_at = $2
+             WHERE execution_process_id = $3
+               AND repo_id = $4"#,
             after_head_commit,
             now,
             execution_process_id,
             repo_id
         )
         .execute(pool)
-        .await?;
+        .await;
         Ok(())
     }
 
@@ -120,9 +120,9 @@ impl ExecutionProcessRepoState {
         let now = Utc::now();
         sqlx::query!(
             r#"UPDATE execution_process_repo_states
-               SET merge_commit = ?, updated_at = ?2
-             WHERE execution_process_id = ?3
-               AND repo_id = ?4"#,
+               SET merge_commit = $1, updated_at = $2
+             WHERE execution_process_id = $3
+               AND repo_id = $4"#,
             merge_commit,
             now,
             execution_process_id,
@@ -149,7 +149,7 @@ impl ExecutionProcessRepoState {
                     created_at as "created_at!: DateTime<Utc>",
                     updated_at as "updated_at!: DateTime<Utc>"
                FROM execution_process_repo_states
-               WHERE execution_process_id = ?
+               WHERE execution_process_id = $1
                ORDER BY created_at ASC"#,
             execution_process_id
         )

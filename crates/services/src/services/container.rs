@@ -109,7 +109,7 @@ pub trait ContainerService {
             let sessions = Session::find_by_workspace_id(&self.db().pool, workspace.id).await?;
             for session in sessions {
                 if let Ok(processes) =
-                    ExecutionProcess::find_by_session_id(&self.db().pool, session.id, false).await
+                ExecutionProcess::find_by_session_id(&self.db().pool, session.id, false, None, None).await
                 {
                     for process in processes {
                         if process.status == ExecutionProcessStatus::Running {
@@ -193,11 +193,11 @@ pub trait ContainerService {
         let message = match ctx.execution_process.status {
             ExecutionProcessStatus::Completed => format!(
                 "✅ '{}' completed successfully\nBranch: {:?}\nExecutor: {:?}",
-                ctx.task.title, ctx.workspace.branch, ctx.session.executor
+                ctx.task.title, ctx.workspace.branch.clone().unwrap_or_default(), ctx.session.executor
             ),
             ExecutionProcessStatus::Failed => format!(
                 "❌ '{}' execution failed\nBranch: {:?}\nExecutor: {:?}",
-                ctx.task.title, ctx.workspace.branch, ctx.session.executor
+                ctx.task.title, ctx.workspace.branch.clone().unwrap_or_default(), ctx.session.executor
             ),
             _ => {
                 tracing::warn!(
@@ -365,7 +365,8 @@ pub trait ContainerService {
         for repo in repos {
             let name = repo
                 .path
-                .file_name()
+                .as_ref()
+                .and_then(|p| Path::new(p).file_name())
                 .and_then(|n| n.to_str())
                 .unwrap_or(&repo.id.to_string())
                 .to_string();
@@ -539,7 +540,7 @@ pub trait ContainerService {
 
         for session in sessions {
             if let Ok(processes) =
-                ExecutionProcess::find_by_session_id(&self.db().pool, session.id, false).await
+                ExecutionProcess::find_by_session_id(&self.db().pool, session.id, false, None, None).await
             {
                 for process in processes {
                     // Skip dev server processes unless explicitly included
@@ -714,10 +715,10 @@ pub trait ContainerService {
                     msg,
                     LogMsg::Stdout(_) | LogMsg::Stderr(_) | LogMsg::JsonPatch(_)
                 ) {
-                    temp_store.push(msg);
+                    temp_store.push(msg).await;
                 }
             }
-            temp_store.push_finished();
+            temp_store.push_finished().await;
 
             let process = match ExecutionProcess::find_by_id(&self.db().pool, *id).await {
                 Ok(Some(process)) => process,

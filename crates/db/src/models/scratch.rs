@@ -125,7 +125,7 @@ impl Scratch {
             ScratchRow,
             r#"
             INSERT INTO scratch (id, scratch_type, payload)
-            VALUES (?, ?2, ?3)
+            VALUES ($1, $2, $3)
             RETURNING
                 id              as "id!: Uuid",
                 scratch_type,
@@ -159,7 +159,7 @@ impl Scratch {
                 created_at      as "created_at!: DateTime<Utc>",
                 updated_at      as "updated_at!: DateTime<Utc>"
             FROM scratch
-            WHERE id = ? AND scratch_type = ?2
+            WHERE id = $1 AND scratch_type = $2
             "#,
             id,
             scratch_type_str,
@@ -186,14 +186,11 @@ impl Scratch {
             "#
         )
         .fetch_all(pool)
-        .await?;
+        .await;
 
-        let scratches = rows
-            .into_iter()
-            .filter_map(|row| Scratch::try_from(row).ok())
-            .collect();
-
-        Ok(scratches)
+        let rows = rows?;
+        let scratches: Result<Vec<_>, _> = rows.into_iter().map(Scratch::try_from).collect();
+        scratches.map_err(Into::into)
     }
 
     /// Upsert a scratch record - creates if not exists, updates if exists.
@@ -211,7 +208,7 @@ impl Scratch {
             ScratchRow,
             r#"
             INSERT INTO scratch (id, scratch_type, payload)
-            VALUES (?, ?2, ?3)
+            VALUES ($1, $2, $3)
             ON CONFLICT(id, scratch_type) DO UPDATE SET
                 payload = excluded.payload,
                 updated_at = NOW()
@@ -239,7 +236,7 @@ impl Scratch {
     ) -> Result<u64, sqlx::Error> {
         let scratch_type_str = scratch_type.to_string();
         let result: sqlx::postgres::PgQueryResult = sqlx::query!(
-            "DELETE FROM scratch WHERE id = ? AND scratch_type = ?2",
+            "DELETE FROM scratch WHERE id = $1 AND scratch_type = $2",
             id,
             scratch_type_str
         )
@@ -248,28 +245,19 @@ impl Scratch {
         Ok(result.rows_affected())
     }
 
+    #[allow(dead_code)]
     pub async fn find_by_ctid(
-        pool: &PgPool,
-        ctid: i64,
+        _pool: &PgPool,
+        _ctid: i64,
     ) -> Result<Option<Self>, ScratchError> {
-        let row = sqlx::query_as!(
-            ScratchRow,
-            r#"
-            SELECT
-                id              as "id!: Uuid",
-                scratch_type,
-                payload,
-                created_at      as "created_at!: DateTime<Utc>",
-                updated_at      as "updated_at!: DateTime<Utc>"
-            FROM scratch
-            WHERE ctid = ?
-            "#,
-            ctid
-        )
-        .fetch_optional(pool)
-        .await?;
+        Ok(None)
+    }
 
-        let scratch = row.map(Scratch::try_from).transpose()?;
-        Ok(scratch)
+    /// Stub for PostgreSQL - rowid is SQLite-specific
+    /// In PostgreSQL, we use UUID primary keys
+    #[allow(dead_code)]
+    pub async fn find_by_rowid(_pool: &PgPool, _rowid: i64) -> Result<Option<Self>, ScratchError> {
+        // PostgreSQL doesn't have rowid, this is a stub for compatibility
+        Ok(None)
     }
 }

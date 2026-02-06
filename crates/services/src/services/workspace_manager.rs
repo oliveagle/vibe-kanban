@@ -85,7 +85,7 @@ impl WorkspaceManager {
             );
 
             match WorktreeManager::create_worktree(
-                &input.repo.path,
+                &input.repo.path_buf().unwrap_or_default(),
                 branch_name,
                 &worktree_path,
                 &input.target_branch,
@@ -97,7 +97,7 @@ impl WorkspaceManager {
                     created_worktrees.push(RepoWorktree {
                         repo_id: input.repo.id,
                         repo_name: input.repo.name.clone(),
-                        source_repo_path: input.repo.path.clone(),
+                        source_repo_path: input.repo.path_buf().unwrap_or_default(),
                         worktree_path,
                     });
                 }
@@ -166,7 +166,7 @@ impl WorkspaceManager {
                 worktree_path.display()
             );
 
-            WorktreeManager::ensure_worktree_exists(&repo.path, branch_name, &worktree_path)
+            WorktreeManager::ensure_worktree_exists(&repo.path_buf().unwrap_or_default(), branch_name, &worktree_path)
                 .await?;
         }
 
@@ -184,7 +184,7 @@ impl WorkspaceManager {
             .iter()
             .map(|repo| {
                 let worktree_path = workspace_dir.join(&repo.name);
-                WorktreeCleanup::new(worktree_path, Some(repo.path.clone()))
+                WorktreeCleanup::new(worktree_path, Some(repo.path_buf().unwrap_or_default()))
             })
             .collect();
 
@@ -247,13 +247,13 @@ impl WorkspaceManager {
         );
         let temp_path = workspace_dir.with_file_name(temp_name);
 
-        WorktreeManager::move_worktree(&repo.path, workspace_dir, &temp_path).await?;
+        WorktreeManager::move_worktree(&repo.path_buf().unwrap_or_default(), workspace_dir, &temp_path).await?;
 
         // Create new workspace directory
         tokio::fs::create_dir_all(workspace_dir).await?;
 
         // Move worktree to final location using git worktree move
-        WorktreeManager::move_worktree(&repo.path, &temp_path, &expected_worktree_path).await?;
+        WorktreeManager::move_worktree(&repo.path_buf().unwrap_or_default(), &temp_path, &expected_worktree_path).await?;
 
         if temp_path.exists() {
             let _ = tokio::fs::remove_dir_all(&temp_path).await;

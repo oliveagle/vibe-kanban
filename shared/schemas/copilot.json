@@ -4,12 +4,26 @@
     "append_prompt": {
       "title": "Append Prompt",
       "description": "Extra text appended to the prompt",
-      "type": [
-        "string",
-        "null"
-      ],
+      "type": "object",
       "format": "textarea",
-      "default": null
+      "properties": {
+        "prefix": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suffix": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "default": {
+        "prefix": null,
+        "suffix": null
+      }
     },
     "model": {
       "type": [

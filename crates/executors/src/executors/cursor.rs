@@ -4,6 +4,7 @@ use std::{collections::HashMap, path::Path, process::Stdio, sync::Arc, time::Dur
 use async_trait::async_trait;
 use command_group::AsyncCommandGroup;
 use futures::StreamExt;
+use futures::executor::block_on;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::{io::AsyncWriteExt, process::Command};
@@ -185,11 +186,11 @@ impl StandardCodingAgentExecutor for CursorAgent {
                     };
                     let id = entry_index_provider_stderr.next();
                     msg_store_stderr
-                        .push_patch(ConversationPatch::add_normalized_entry(id, error_message));
+                        .push_patch(ConversationPatch::add_normalized_entry(id, error_message)).await;
                 } else {
                     // Always emit error message
                     for patch in processor.process(chunk) {
-                        msg_store_stderr.push_patch(patch);
+                        msg_store_stderr.push_patch(patch).await;
                     }
                 }
             }
@@ -231,7 +232,7 @@ impl StandardCodingAgentExecutor for CursorAgent {
 
                             let patch_id = entry_index_provider.next();
                             let patch = ConversationPatch::add_normalized_entry(patch_id, entry);
-                            msg_store.push_patch(patch);
+                            msg_store.push_patch(patch).await;
                         }
                         continue;
                     }
@@ -239,7 +240,7 @@ impl StandardCodingAgentExecutor for CursorAgent {
 
                 // Push session_id if present
                 if !session_id_reported && let Some(session_id) = cursor_json.extract_session_id() {
-                    msg_store.push_session_id(session_id);
+                    msg_store.push_session_id(session_id).await;
                     session_id_reported = true;
                 }
 
@@ -266,7 +267,7 @@ impl StandardCodingAgentExecutor for CursorAgent {
                             };
                             let id = entry_index_provider.next();
                             msg_store
-                                .push_patch(ConversationPatch::add_normalized_entry(id, entry));
+                                .push_patch(ConversationPatch::add_normalized_entry(id, entry)).await;
                             model_reported = true;
                         }
                     }
@@ -283,14 +284,14 @@ impl StandardCodingAgentExecutor for CursorAgent {
                                 metadata: None,
                             };
                             if let Some(id) = current_assistant_message_index {
-                                msg_store.push_patch(ConversationPatch::replace(id, replace_entry))
+                                block_on(msg_store.push_patch(ConversationPatch::replace(id, replace_entry)));
                             } else {
                                 let id = entry_index_provider.next();
                                 current_assistant_message_index = Some(id);
-                                msg_store.push_patch(ConversationPatch::add_normalized_entry(
+                                block_on(msg_store.push_patch(ConversationPatch::add_normalized_entry(
                                     id,
                                     replace_entry,
-                                ));
+                                )));
                             };
                         }
                     }
@@ -306,12 +307,12 @@ impl StandardCodingAgentExecutor for CursorAgent {
                                 metadata: None,
                             };
                             if let Some(id) = current_thinking_message_index {
-                                msg_store.push_patch(ConversationPatch::replace(id, entry));
+                                msg_store.push_patch(ConversationPatch::replace(id, entry)).await;
                             } else {
                                 let id = entry_index_provider.next();
                                 current_thinking_message_index = Some(id);
                                 msg_store
-                                    .push_patch(ConversationPatch::add_normalized_entry(id, entry));
+                                    .push_patch(ConversationPatch::add_normalized_entry(id, entry)).await;
                             }
                         }
                     }
@@ -347,7 +348,7 @@ impl StandardCodingAgentExecutor for CursorAgent {
                                 call_index_map.insert(cid.clone(), id);
                             }
                             msg_store
-                                .push_patch(ConversationPatch::add_normalized_entry(id, entry));
+                                .push_patch(ConversationPatch::add_normalized_entry(id, entry)).await;
                         } else if subtype
                             .as_deref()
                             .map(|s| s.eq_ignore_ascii_case("completed"))
@@ -463,7 +464,7 @@ impl StandardCodingAgentExecutor for CursorAgent {
                                 content: content_str,
                                 metadata: None,
                             };
-                            msg_store.push_patch(ConversationPatch::replace(idx, entry));
+                            msg_store.push_patch(ConversationPatch::replace(idx, entry)).await;
                         }
                     }
 
@@ -479,7 +480,7 @@ impl StandardCodingAgentExecutor for CursorAgent {
                             metadata: None,
                         };
                         let id = entry_index_provider.next();
-                        msg_store.push_patch(ConversationPatch::add_normalized_entry(id, entry));
+                        msg_store.push_patch(ConversationPatch::add_normalized_entry(id, entry)).await;
                     }
                 }
             }

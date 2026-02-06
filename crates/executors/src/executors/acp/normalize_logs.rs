@@ -44,7 +44,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                 match parsed {
                     AcpEvent::SessionStart(id) => {
                         if !stored_session_id {
-                            msg_store.push_session_id(id);
+                            msg_store.push_session_id(id).await;
                             stored_session_id = true;
                         }
                     }
@@ -58,7 +58,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                             content: msg,
                             metadata: None,
                         };
-                        msg_store.push_patch(ConversationPatch::add_normalized_entry(idx, entry));
+                        msg_store.push_patch(ConversationPatch::add_normalized_entry(idx, entry)).await;
                     }
                     AcpEvent::Done(_) => {
                         streaming.assistant_text = None;
@@ -91,7 +91,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                 } else {
                                     ConversationPatch::replace(s.index, entry)
                                 };
-                                msg_store.push_patch(patch);
+                                msg_store.push_patch(patch).await;
                             }
                         }
                     }
@@ -119,7 +119,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                 } else {
                                     ConversationPatch::replace(s.index, entry)
                                 };
-                                msg_store.push_patch(patch);
+                                msg_store.push_patch(patch).await;
                             }
                         }
                     }
@@ -155,7 +155,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                             content: "Plan updated".to_string(),
                             metadata: None,
                         };
-                        msg_store.push_patch(ConversationPatch::add_normalized_entry(idx, entry));
+                        msg_store.push_patch(ConversationPatch::add_normalized_entry(idx, entry)).await;
                     }
                     AcpEvent::AvailableCommands(cmds) => {
                         let mut body = String::from("Available commands:\n");
@@ -169,7 +169,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                             content: body,
                             metadata: None,
                         };
-                        msg_store.push_patch(ConversationPatch::add_normalized_entry(idx, entry));
+                        msg_store.push_patch(ConversationPatch::add_normalized_entry(idx, entry)).await;
                     }
                     AcpEvent::CurrentMode(mode_id) => {
                         let idx = entry_index.next();
@@ -179,7 +179,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                             content: format!("Current mode: {}", mode_id.0),
                             metadata: None,
                         };
-                        msg_store.push_patch(ConversationPatch::add_normalized_entry(idx, entry));
+                        msg_store.push_patch(ConversationPatch::add_normalized_entry(idx, entry)).await;
                     }
                     AcpEvent::RequestPermission(perm) => {
                         if let Ok(tc) = agent_client_protocol::ToolCall::try_from(perm.tool_call) {
@@ -190,17 +190,19 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                 &mut tool_states,
                                 &entry_index,
                                 &msg_store,
-                            );
+                            ).await;
                         }
                     }
-                    AcpEvent::ToolCall(tc) => handle_tool_call(
-                        &tc,
-                        &worktree_path,
-                        &mut streaming,
-                        &mut tool_states,
-                        &entry_index,
-                        &msg_store,
-                    ),
+                    AcpEvent::ToolCall(tc) => {
+                        handle_tool_call(
+                            &tc,
+                            &worktree_path,
+                            &mut streaming,
+                            &mut tool_states,
+                            &entry_index,
+                            &msg_store,
+                        ).await;
+                    }
                     AcpEvent::ToolUpdate(update) => {
                         let mut update = update;
                         if update.fields.title.is_none() {
@@ -218,7 +220,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                 &mut tool_states,
                                 &entry_index,
                                 &msg_store,
-                            );
+                            ).await;
                         } else {
                             tracing::debug!("Failed to convert tool call update to ToolCall");
                         }
@@ -249,7 +251,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                 metadata: None,
                             };
                             msg_store
-                                .push_patch(ConversationPatch::add_normalized_entry(idx, entry));
+                                .push_patch(ConversationPatch::add_normalized_entry(idx, entry)).await;
                         }
                     }
                     AcpEvent::User(_) | AcpEvent::Other(_) => (),
@@ -257,7 +259,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
             }
         }
 
-        fn handle_tool_call(
+        async fn handle_tool_call(
             tc: &agent_client_protocol::ToolCall,
             worktree_path: &Path,
             streaming: &mut StreamingState,
@@ -293,7 +295,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
             } else {
                 ConversationPatch::replace(tool_data.index, entry)
             };
-            msg_store.push_patch(patch);
+            msg_store.push_patch(patch).await;
         }
 
         fn map_to_action_type(tc: &PartialToolCallData) -> ActionType {

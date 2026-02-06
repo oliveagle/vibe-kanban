@@ -10,6 +10,7 @@ pub mod approvals;
 pub mod config;
 pub mod container_orchestration;
 pub mod containers;
+pub mod debug;
 pub mod filesystem;
 // pub mod github;
 pub mod events;
@@ -49,6 +50,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(approvals::router())
         .merge(scratch::router(&deployment))
         .merge(sessions::router(&deployment))
+        .merge(debug::router())
         .nest("/images", images::routes())
         .with_state(deployment);
 
@@ -59,8 +61,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
 
     Router::new()
         .route("/", get(frontend::serve_frontend_root))
-        .route("/{*path}", get(frontend::serve_frontend))
         .nest("/api", base_routes)
+        .fallback(get(frontend::serve_frontend_fallback))
         .layer(cors)
         .into_make_service()
 }

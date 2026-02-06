@@ -34,7 +34,7 @@ use uuid::Uuid;
 use crate::container::LocalContainerService;
 mod command;
 pub mod container;
-mod copy;
+pub mod copy;
 
 #[derive(Clone)]
 pub struct LocalDeployment {
@@ -107,15 +107,8 @@ impl Deployment for LocalDeployment {
         let events_msg_store = Arc::new(MsgStore::new());
         let events_entry_count = Arc::new(RwLock::new(0));
 
-        // Create DB with event hooks
-        let db = {
-            let hook = EventService::create_hook(
-                events_msg_store.clone(),
-                events_entry_count.clone(),
-                DBService::new().await?, // Temporary DB service for the hook
-            );
-            DBService::new_with_after_connect(hook).await?
-        };
+        // Create DB - PostgreSQL doesn't use SQLite-style hooks
+        let db = DBService::new().await?;
 
         let image = ImageService::new(db.clone().pool)?;
         {
@@ -211,6 +204,10 @@ impl Deployment for LocalDeployment {
         .await;
 
         let events = EventService::new(db.clone(), events_msg_store, events_entry_count);
+        
+        if let Err(e) = events.start().await {
+            tracing::warn!("Failed to start event service: {}", e);
+        }
 
         let file_search_cache = Arc::new(FileSearchCache::new());
 

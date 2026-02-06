@@ -1,22 +1,24 @@
 use std::{
-    fs::{self, OpenOptions},
-    io::{self, Result, Write},
+    io::{self, Result},
     path::PathBuf,
     str::FromStr,
 };
 
 use serde::{Deserialize, Serialize};
+use tokio::fs;
+use tokio::io::AsyncWriteExt;
 
 use crate::executors::acp::AcpEvent;
 
 /// Manages session persistence and state for ACP interactions
+#[derive(Clone)]
 pub struct SessionManager {
     base_dir: PathBuf,
 }
 
 impl SessionManager {
     /// Create a new session manager with the given namespace
-    pub fn new(namespace: impl Into<String>) -> Result<Self> {
+    pub async fn new(namespace: impl Into<String>) -> Result<Self> {
         let namespace = namespace.into();
         let mut vk_dir = dirs::home_dir()
             .ok_or_else(|| io::Error::other("Could not determine home directory"))?
@@ -28,7 +30,7 @@ impl SessionManager {
 
         let base_dir = vk_dir.join(&namespace);
 
-        fs::create_dir_all(&base_dir)?;
+        fs::create_dir_all(&base_dir).await?;
 
         Ok(Self { base_dir })
     }
@@ -46,15 +48,26 @@ impl SessionManager {
     /// - Dropping top-level `options` (permission menu). Note: `options` is
     ///   mutually exclusive with `update`, so when `update` is present we do not
     ///   perform any `options` stripping.
-    pub fn append_raw_line(&self, session_id: &str, raw_json: &str) -> Result<()> {
+    ///
+    /// Returns None if the input is not a JSON object.
+    pub async fn append_raw_line(&self, session_id: &str, raw_json: &str) -> Result<()> {
         let Some(normalized) = Self::normalize_session_event(raw_json) else {
             return Ok(());
         };
 
         let path = self.session_file_path(session_id);
-        let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+        
+        // Use tokio::fs for async file operations
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .await?;
 
-        writeln!(file, "{normalized}")?;
+        file.write_all(normalized.as_bytes()).await?;
+        file.write_all(b"\n").await?;
+        file.flush().await?;
+        
         Ok(())
     }
 
@@ -67,7 +80,7 @@ impl SessionManager {
     /// - If `update` is absent, remove only top-level `options`.
     ///
     /// Returns None if the input is not a JSON object.
-    fn normalize_session_event(raw_json: &str) -> Option<String> {
+    pub fn normalize_session_event(raw_json: &str) -> Option<String> {
         let mut event = AcpEvent::from_str(raw_json).ok()?;
 
         match event {
@@ -111,46 +124,42 @@ impl SessionManager {
     }
 
     /// Read the raw JSONL content of a session
-    pub fn read_session_raw(&self, session_id: &str) -> Result<String> {
+    pub async fn read_session_raw(&self, session_id: &str) -> Result<String> {
         let path = self.session_file_path(session_id);
         if !path.exists() {
             return Ok(String::new());
         }
 
-        fs::read_to_string(path)
+        fs::read_to_string(path).await
     }
 
     /// Fork a session to create a new one with the same history
-    pub fn fork_session(&self, old_id: &str, new_id: &str) -> Result<()> {
+    pub async fn fork_session(&self, old_id: &str, new_id: &str) -> Result<()> {
         let old_path = self.session_file_path(old_id);
         let new_path = self.session_file_path(new_id);
 
         if old_path.exists() {
-            fs::copy(&old_path, &new_path)?;
+            fs::copy(&old_path, &new_path).await?;
         } else {
             // Create empty new file if old doesn't exist
-            OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(&new_path)?;
+            fs::File::create(&new_path).await?;
         }
 
         Ok(())
     }
 
     /// Delete a session
-    pub fn delete_session(&self, session_id: &str) -> Result<()> {
+    pub async fn delete_session(&self, session_id: &str) -> Result<()> {
         let path = self.session_file_path(session_id);
         if path.exists() {
-            fs::remove_file(path)?;
+            fs::remove_file(path).await?;
         }
         Ok(())
     }
 
     /// Generate a resume prompt from session history
-    pub fn generate_resume_prompt(&self, session_id: &str, current_prompt: &str) -> Result<String> {
-        let session_context = self.read_session_raw(session_id)?;
+    pub async fn generate_resume_prompt(&self, session_id: &str, current_prompt: &str) -> Result<String> {
+        let session_context = self.read_session_raw(session_id).await?;
 
         Ok(format!(
             concat!(
@@ -178,4 +187,33 @@ pub struct SessionMetadata {
     pub updated_at: chrono::DateTime<chrono::Utc>,
     pub parent_session: Option<String>,
     pub tags: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_session_event() {
+        // Test user event
+        let user_event = r#"{"User": "Hello"}"#;
+        let normalized = SessionManager::normalize_session_event(user_event);
+        assert!(normalized.is_some());
+        assert!(normalized.unwrap().contains("user"));
+
+        // Test message event
+        let msg_event = r#"{"Message": {"Text": {"text": "Hello"}}}"#;
+        let normalized = SessionManager::normalize_session_event(msg_event);
+        assert!(normalized.is_some());
+
+        // Test events that should be filtered out
+        let session_start = r#"{"SessionStart": "id123"}"#;
+        assert!(SessionManager::normalize_session_event(session_start).is_none());
+        
+        let done_event = r#"{"Done": "success"}"#;
+        assert!(SessionManager::normalize_session_event(done_event).is_none());
+        
+        let error_event = r#"{"Error": "something went wrong"}"#;
+        assert!(SessionManager::normalize_session_event(error_event).is_none());
+    }
 }

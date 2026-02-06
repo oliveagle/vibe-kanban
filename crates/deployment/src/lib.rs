@@ -172,6 +172,7 @@ pub trait Deployment: Clone + Send + Sync + 'static {
                             display_name: repo.name,
                             git_repo_path: repo_path.clone(),
                         }],
+                        organization_id: None,
                     };
 
                     match self
@@ -200,7 +201,7 @@ pub trait Deployment: Clone + Send + Sync + 'static {
                         Err(e) => {
                             tracing::warn!(
                                 "Failed to auto-create project from {}: {}",
-                                repo.path.display(),
+                                repo.path.to_string_lossy().to_string(),
                                 e
                             );
                         }
@@ -213,10 +214,11 @@ pub trait Deployment: Clone + Send + Sync + 'static {
     async fn stream_events(
         &self,
     ) -> futures::stream::BoxStream<'static, Result<Event, std::io::Error>> {
+        use futures::TryStreamExt;
         self.events()
             .msg_store()
             .history_plus_stream()
-            .map_ok(|m| m.to_sse_event())
+            .map_ok(|m: utils::log_msg::LogMsg| m.to_sse_event())
             .boxed()
     }
 }

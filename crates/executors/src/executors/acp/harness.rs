@@ -280,7 +280,7 @@ impl AcpAgentHarness {
                             mpsc::unbounded_channel::<crate::executors::acp::AcpEvent>();
 
                         // Create session manager
-                        let session_manager = match SessionManager::new(session_namespace) {
+                        let session_manager = match SessionManager::new(session_namespace).await {
                             Ok(sm) => sm,
                             Err(e) => {
                                 error!("Failed to create session manager: {}", e);
@@ -317,9 +317,9 @@ impl AcpAgentHarness {
                             if let Some(existing) = existing_session {
                                 // Fork existing session
                                 let new_ui_id = uuid::Uuid::new_v4().to_string();
-                                let _ = session_manager.fork_session(&existing, &new_ui_id);
+                                let _ = session_manager.fork_session(&existing, &new_ui_id).await;
 
-                                let history = session_manager.read_session_raw(&new_ui_id).ok();
+                                let history = session_manager.read_session_raw(&new_ui_id).await.ok();
                                 let meta =
                                     history.map(|h| serde_json::json!({ "history_jsonl": h }));
 
@@ -332,7 +332,7 @@ impl AcpAgentHarness {
                                 match conn.new_session(req).await {
                                     Ok(resp) => {
                                         let resume_prompt = session_manager
-                                            .generate_resume_prompt(&new_ui_id, &prompt)
+                                            .generate_resume_prompt(&new_ui_id, &prompt).await
                                             .unwrap_or_else(|_| prompt.clone());
                                         (resp.session_id.0.to_string(), new_ui_id, resume_prompt)
                                     }
@@ -415,7 +415,7 @@ impl AcpAgentHarness {
                                 // Forward to stdout
                                 let _ = app_tx_clone.send(line.clone());
                                 // Persist to session file
-                                let _ = sm_for_writer.append_raw_line(&sess_id_for_writer, &line);
+                                let _ = sm_for_writer.append_raw_line(&sess_id_for_writer, &line).await;
                             }
                         });
 
@@ -424,7 +424,7 @@ impl AcpAgentHarness {
                             &display_session_id,
                             &serde_json::to_string(&serde_json::json!({ "user": prompt_to_send }))
                                 .unwrap_or_default(),
-                        );
+                        ).await;
 
                         // Build prompt request
                         let initial_req = proto::PromptRequest::new(

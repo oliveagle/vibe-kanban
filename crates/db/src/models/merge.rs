@@ -66,7 +66,7 @@ pub struct MergeRow {
     merge_type: MergeType,
     merge_commit: Option<String>,
     target_branch_name: String,
-    pr_number: Option<i64>,
+    pr_number: Option<i32>,
     pr_url: Option<String>,
     pr_status: Option<MergeStatus>,
     pr_merged_at: Option<DateTime<Utc>>,
@@ -97,7 +97,7 @@ impl Merge {
             MergeRow,
             r#"INSERT INTO merges (
                 id, workspace_id, repo_id, merge_type, merge_commit, created_at, target_branch_name
-            ) VALUES (?, ?2, ?3, 'direct', ?4, ?5, ?6)
+            ) VALUES ($1, $2, $3, 'direct', $4, $5, $6)
             RETURNING
                 id as "id!: Uuid",
                 workspace_id as "workspace_id!: Uuid",
@@ -139,7 +139,7 @@ impl Merge {
             MergeRow,
             r#"INSERT INTO merges (
                 id, workspace_id, repo_id, merge_type, pr_number, pr_url, pr_status, created_at, target_branch_name
-            ) VALUES (?, ?2, ?3, 'pr', ?4, ?5, 'open', ?6, ?7)
+            ) VALUES ($1, $2, $3, 'pr', $4, $5, 'open', $6, $7)
             RETURNING
                 id as "id!: Uuid",
                 workspace_id as "workspace_id!: Uuid",
@@ -157,7 +157,7 @@ impl Merge {
             id,
             workspace_id,
             repo_id,
-            pr_number,
+            pr_number as i32,
             pr_url,
             now,
             target_branch_name
@@ -179,7 +179,7 @@ impl Merge {
                 merge_commit,
                 pr_number,
                 pr_url,
-                pr_status as "pr_status?: MergeStatus",
+                pr_status as "pr_status: MergeStatus",
                 pr_merged_at as "pr_merged_at?: DateTime<Utc>",
                 pr_merge_commit_sha,
                 created_at as "created_at!: DateTime<Utc>",
@@ -207,13 +207,20 @@ impl Merge {
             None
         };
 
+        let status_str = match pr_status {
+            MergeStatus::Open => "open",
+            MergeStatus::Merged => "merged",
+            MergeStatus::Closed => "closed",
+            MergeStatus::Unknown => "unknown",
+        };
+        
         sqlx::query!(
             r#"UPDATE merges
-            SET pr_status = ?,
-                pr_merge_commit_sha = ?2,
-                pr_merged_at = ?3
-            WHERE id = ?4"#,
-            pr_status,
+            SET pr_status = $1,
+                pr_merge_commit_sha = $2,
+                pr_merged_at = $3
+            WHERE id = $4"#,
+            status_str,
             merge_commit_sha,
             merged_at,
             merge_id
@@ -239,13 +246,13 @@ impl Merge {
                 merge_commit,
                 pr_number,
                 pr_url,
-                pr_status as "pr_status?: MergeStatus",
+                pr_status as "pr_status: MergeStatus",
                 pr_merged_at as "pr_merged_at?: DateTime<Utc>",
                 pr_merge_commit_sha,
                 target_branch_name as "target_branch_name!: String",
                 created_at as "created_at!: DateTime<Utc>"
             FROM merges
-            WHERE workspace_id = ?
+            WHERE workspace_id = $1
             ORDER BY created_at DESC"#,
             workspace_id
         )
@@ -272,13 +279,13 @@ impl Merge {
                 merge_commit,
                 pr_number,
                 pr_url,
-                pr_status as "pr_status?: MergeStatus",
+                pr_status as "pr_status: MergeStatus",
                 pr_merged_at as "pr_merged_at?: DateTime<Utc>",
                 pr_merge_commit_sha,
                 target_branch_name as "target_branch_name!: String",
                 created_at as "created_at!: DateTime<Utc>"
             FROM merges
-            WHERE workspace_id = ? AND repo_id = ?2
+            WHERE workspace_id = $1 AND repo_id = $2
             ORDER BY created_at DESC"#,
             workspace_id,
             repo_id
@@ -314,7 +321,7 @@ impl From<MergeRow> for PrMerge {
             repo_id: row.repo_id,
             target_branch_name: row.target_branch_name,
             pr_info: PullRequestInfo {
-                number: row.pr_number.expect("pr merge must have pr_number"),
+                number: row.pr_number.expect("pr merge must have pr_number") as i64,
                 url: row.pr_url.expect("pr merge must have pr_url"),
                 status: row.pr_status.expect("pr merge must have status"),
                 merged_at: row.pr_merged_at,

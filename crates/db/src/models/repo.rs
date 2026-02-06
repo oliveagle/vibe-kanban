@@ -18,13 +18,19 @@ pub enum RepoError {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct Repo {
     pub id: Uuid,
-    pub path: PathBuf,
+    pub path: Option<String>,
     pub name: String,
-    pub display_name: String,
+    pub display_name: Option<String>,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
     pub updated_at: DateTime<Utc>,
+}
+
+impl Repo {
+    pub fn path_buf(&self) -> Option<PathBuf> {
+        self.path.as_ref().map(PathBuf::from)
+    }
 }
 
 impl Repo {
@@ -53,7 +59,7 @@ impl Repo {
         display_name: &str,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            "UPDATE repos SET name = ?, display_name = ?2, updated_at = NOW() WHERE id = ?3",
+            "UPDATE repos SET name = $1, display_name = $2, updated_at = NOW() WHERE id = $3",
             name,
             display_name,
             id
@@ -73,7 +79,7 @@ impl Repo {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM repos
-               WHERE id = "#,
+               WHERE id = $1"#,
             id
         )
         .fetch_optional(pool)
@@ -99,8 +105,8 @@ impl Repo {
         sqlx::query_as!(
             Repo,
             r#"INSERT INTO repos (id, path, name, display_name)
-               VALUES (?, ?2, ?3, ?4)
-               ON CONFLICT(path) DO UPDATE SET updated_at = updated_at
+               VALUES ($1, $2, $3, $4)
+                ON CONFLICT(path) DO UPDATE SET updated_at = repos.updated_at
                RETURNING id as "id!: Uuid",
                          path,
                          name,

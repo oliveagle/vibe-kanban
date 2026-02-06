@@ -87,7 +87,7 @@ impl Approvals {
 
         if let Some(store) = self.msg_store_by_id(&request.execution_process_id).await {
             // Find the matching tool use entry by name and input
-            let matching_tool = find_matching_tool_use(store.clone(), &request.tool_call_id);
+            let matching_tool = find_matching_tool_use(store.clone(), &request.tool_call_id).await;
 
             if let Some((idx, matching_tool)) = matching_tool {
                 let approval_entry = matching_tool
@@ -97,7 +97,7 @@ impl Approvals {
                         timeout_at: request.timeout_at,
                     })
                     .ok_or(ApprovalError::NoToolUseEntry)?;
-                store.push_patch(ConversationPatch::replace(idx, approval_entry));
+                store.push_patch(ConversationPatch::replace(idx, approval_entry)).await;
 
                 self.pending.insert(
                     req_id.clone(),
@@ -272,16 +272,16 @@ pub(crate) async fn ensure_task_in_review(pool: &PgPool, execution_process_id: U
 
 /// Find a matching tool use entry that hasn't been assigned to an approval yet
 /// Matches by tool call id from tool metadata
-fn find_matching_tool_use(
+async fn find_matching_tool_use(
     store: Arc<MsgStore>,
     tool_call_id: &str,
 ) -> Option<(usize, NormalizedEntry)> {
-    let history = store.get_history();
+    let history = store.get_history().await;
 
     // Single loop through history
     for msg in history.iter().rev() {
         if let LogMsg::JsonPatch(patch) = msg
-            && let Some((idx, entry)) = extract_normalized_entry_from_patch(patch)
+            && let Some((idx, entry)) = extract_normalized_entry_from_patch(&patch)
             && let NormalizedEntryType::ToolUse { status, .. } = &entry.entry_type
         {
             // Only match tools that are in Created state

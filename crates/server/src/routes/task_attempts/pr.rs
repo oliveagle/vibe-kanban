@@ -199,7 +199,7 @@ pub async fn create_github_pr(
         .await?
         .ok_or(RepoError::NotFound)?;
 
-    let repo_path = repo.path;
+    let repo_path = repo.path_buf().unwrap_or_default();
     let target_branch = if let Some(branch) = request.target_branch {
         branch
     } else {
@@ -241,7 +241,7 @@ pub async fn create_github_pr(
     // Push the branch to GitHub first
     if let Err(e) = deployment
         .git()
-        .push_to_github(&worktree_path, &workspace.branch, false)
+        .push_to_github(&worktree_path, workspace.branch.as_deref().unwrap_or("main"), false)
     {
         tracing::error!("Failed to push branch to GitHub: {}", e);
         match e {
@@ -282,7 +282,7 @@ pub async fn create_github_pr(
     let pr_request = CreatePrRequest {
         title: request.title.clone(),
         body: request.body.clone(),
-        head_branch: workspace.branch.clone(),
+        head_branch: workspace.branch.clone().unwrap_or_default(),
         base_branch: norm_target_branch_name.clone(),
         draft: request.draft,
     };
@@ -388,11 +388,11 @@ pub async fn attach_existing_pr(
     }
 
     let github_service = GitHubService::new()?;
-    let repo_info = github_service.get_repo_info(&repo.path).await?;
+    let repo_info = github_service.get_repo_info(&repo.path_buf().unwrap_or_default()).await?;
 
     // List all PRs for branch (open, closed, and merged)
     let prs = github_service
-        .list_all_prs_for_branch(&repo_info, &workspace.branch)
+        .list_all_prs_for_branch(&repo_info, workspace.branch.as_deref().unwrap_or("main"))
         .await?;
 
     // Take the first PR (prefer open, but also accept merged/closed)
@@ -487,7 +487,7 @@ pub async fn get_pr_comments(
     };
 
     let github_service = GitHubService::new()?;
-    let repo_info = github_service.get_repo_info(&repo.path).await?;
+    let repo_info = github_service.get_repo_info(&repo.path_buf().unwrap_or_default()).await?;
 
     // Fetch comments from GitHub
     match github_service

@@ -199,12 +199,12 @@ impl StandardCodingAgentExecutor for Copilot {
 
             while let Some(Ok(line)) = stdout_lines.next().await {
                 if let Some(session_id) = line.strip_prefix(Self::SESSION_PREFIX) {
-                    msg_store.push_session_id(session_id.trim().to_string());
+                    msg_store.push_session_id(session_id.trim().to_string()).await;
                     continue;
                 }
 
                 for patch in processor.process(line + "\n") {
-                    msg_store.push_patch(patch);
+                    msg_store.push_patch(patch).await;
                 }
             }
         });

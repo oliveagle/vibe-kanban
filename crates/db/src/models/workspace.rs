@@ -49,7 +49,7 @@ pub struct Workspace {
     pub id: Uuid,
     pub task_id: Uuid,
     pub container_ref: Option<String>,
-    pub branch: String,
+    pub branch: Option<String>,
     pub agent_working_dir: Option<String>,
     pub setup_completed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -104,7 +104,7 @@ impl Workspace {
         task_id: Option<Uuid>,
     ) -> Result<Vec<Self>, WorkspaceError> {
         let workspaces = match task_id {
-            Some(tid) = ?> sqlx::query_as!(
+            Some(tid) => sqlx::query_as!(
                 Workspace,
                 r#"SELECT id AS "id!: Uuid",
                               task_id AS "task_id!: Uuid",
@@ -115,14 +115,14 @@ impl Workspace {
                               created_at AS "created_at!: DateTime<Utc>",
                               updated_at AS "updated_at!: DateTime<Utc>"
                        FROM workspaces
-                       WHERE task_id = ?
+                       WHERE task_id = $1
                        ORDER BY created_at DESC"#,
                 tid
             )
             .fetch_all(pool)
             .await
             .map_err(WorkspaceError::Database)?,
-            None = ?> sqlx::query_as!(
+            None => sqlx::query_as!(
                 Workspace,
                 r#"SELECT id AS "id!: Uuid",
                               task_id AS "task_id!: Uuid",
@@ -139,6 +139,37 @@ impl Workspace {
             .await
             .map_err(WorkspaceError::Database)?,
         };
+
+        Ok(workspaces)
+    }
+
+    /// Fetch all workspaces for multiple task IDs
+    pub async fn fetch_all_bulk(
+        pool: &PgPool,
+        task_ids: &[Uuid],
+    ) -> Result<Vec<Self>, WorkspaceError> {
+        if task_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let workspaces = sqlx::query_as!(
+            Workspace,
+            r#"SELECT id AS "id!: Uuid",
+                      task_id AS "task_id!: Uuid",
+                      container_ref,
+                      branch,
+                      agent_working_dir,
+                      setup_completed_at AS "setup_completed_at: DateTime<Utc>",
+                      created_at AS "created_at!: DateTime<Utc>",
+                      updated_at AS "updated_at!: DateTime<Utc>"
+               FROM workspaces
+               WHERE task_id = ANY($1)
+               ORDER BY created_at DESC"#,
+            task_ids
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(WorkspaceError::Database)?;
 
         Ok(workspaces)
     }
@@ -161,9 +192,9 @@ impl Workspace {
                        w.created_at        AS "created_at!: DateTime<Utc>",
                        w.updated_at        AS "updated_at!: DateTime<Utc>"
                FROM    workspaces w
-               JOIN    tasks t ON w.task_id = ?t.id
-               JOIN    projects p ON t.project_id = ?p.id
-               WHERE   w.id = ? AND t.id = ?2 AND p.id = ?3"#,
+                JOIN    tasks t ON w.task_id = t.id
+                JOIN    projects p ON t.project_id = p.id
+               WHERE   w.id = $1 AND t.id = $2 AND p.id = $3"#,
             workspace_id,
             task_id,
             project_id
@@ -173,15 +204,15 @@ impl Workspace {
         .ok_or(WorkspaceError::TaskNotFound)?;
 
         // Load task and project (we know they exist due to JOIN validation)
-        let task = ?Task::find_by_id(pool, task_id)
+        let task = Task::find_by_id(pool, task_id)
             .await?
             .ok_or(WorkspaceError::TaskNotFound)?;
 
-        let project = ?Project::find_by_id(pool, project_id)
+        let project = Project::find_by_id(pool, project_id)
             .await?
             .ok_or(WorkspaceError::ProjectNotFound)?;
 
-        let workspace_repos = ?
+        let workspace_repos =
             WorkspaceRepo::find_repos_with_target_branch_for_workspace(pool, workspace_id).await?;
 
         Ok(WorkspaceContext {
@@ -200,7 +231,7 @@ impl Workspace {
     ) -> Result<(), sqlx::Error> {
         let now = Utc::now();
         sqlx::query!(
-            "UPDATE workspaces SET container_ref = ?, updated_at = ?2 WHERE id = ?3",
+            "UPDATE workspaces SET container_ref = $1, updated_at = $2 WHERE id = $3",
             container_ref,
             now,
             workspace_id
@@ -215,7 +246,7 @@ impl Workspace {
         workspace_id: Uuid,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            "UPDATE workspaces SET container_ref = ?NULL, updated_at = ?NOW() WHERE id = ??",
+            "UPDATE workspaces SET container_ref = NULL, updated_at = NOW() WHERE id = $1",
             workspace_id
         )
         .execute(pool)
@@ -227,7 +258,7 @@ impl Workspace {
     /// Call this when the workspace is accessed (e.g., opened in editor).
     pub async fn touch(pool: &PgPool, workspace_id: Uuid) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            "UPDATE workspaces SET updated_at = ?NOW() WHERE id = ??",
+            "UPDATE workspaces SET updated_at = NOW() WHERE id = $1",
             workspace_id
         )
         .execute(pool)
@@ -247,30 +278,16 @@ impl Workspace {
                        created_at        AS "created_at!: DateTime<Utc>",
                        updated_at        AS "updated_at!: DateTime<Utc>"
                FROM    workspaces
-               WHERE   id = "#,
+               WHERE   id = $1"#,
             id
         )
         .fetch_optional(pool)
         .await
     }
 
-    pub async fn find_by_ctid(pool: &PgPool, ctid: i64) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            Workspace,
-            r#"SELECT  id                AS "id!: Uuid",
-                       task_id           AS "task_id!: Uuid",
-                       container_ref,
-                       branch,
-                       agent_working_dir,
-                       setup_completed_at AS "setup_completed_at: DateTime<Utc>",
-                       created_at        AS "created_at!: DateTime<Utc>",
-                       updated_at        AS "updated_at!: DateTime<Utc>"
-               FROM    workspaces
-               WHERE   ctid = "#,
-            ctid
-        )
-        .fetch_optional(pool)
-        .await
+    #[allow(dead_code)]
+    pub async fn find_by_ctid(_pool: &PgPool, _ctid: i64) -> Result<Option<Self>, sqlx::Error> {
+        Ok(None)
     }
 
     pub async fn container_ref_exists(
@@ -278,7 +295,7 @@ impl Workspace {
         container_ref: &str,
     ) -> Result<bool, sqlx::Error> {
         let result = sqlx::query!(
-            r#"SELECT EXISTS(SELECT 1 FROM workspaces WHERE container_ref = ??) as "exists!: bool""#,
+            r#"SELECT EXISTS(SELECT 1 FROM workspaces WHERE container_ref = $1) as "exists!: bool""#,
             container_ref
         )
         .fetch_one(pool)
@@ -304,24 +321,22 @@ impl Workspace {
                 w.created_at as "created_at!: DateTime<Utc>",
                 w.updated_at as "updated_at!: DateTime<Utc>"
             FROM workspaces w
-            LEFT JOIN sessions s ON w.id = ?s.workspace_id
-            LEFT JOIN execution_processes ep ON s.id = ?ep.session_id AND ep.completed_at IS NOT NULL
+            LEFT JOIN sessions s ON w.id = s.workspace_id
+            LEFT JOIN execution_processes ep ON s.id = ep.session_id AND ep.completed_at IS NOT NULL
             WHERE w.container_ref IS NOT NULL
                 AND w.id NOT IN (
                     SELECT DISTINCT s2.workspace_id
                     FROM sessions s2
-                    JOIN execution_processes ep2 ON s2.id = ?ep2.session_id
+                    JOIN execution_processes ep2 ON s2.id = ep2.session_id
                     WHERE ep2.completed_at IS NULL
                 )
             GROUP BY w.id, w.container_ref, w.updated_at
-            HAVING datetime('now', '-72 hours') > datetime(
-                MAX(
+            HAVING NOW() - INTERVAL '72 hours' > MAX(
                     CASE
                         WHEN ep.completed_at IS NOT NULL THEN ep.completed_at
                         ELSE w.updated_at
                     END
                 )
-            )
             ORDER BY MAX(
                 CASE
                     WHEN ep.completed_at IS NOT NULL THEN ep.completed_at
@@ -343,7 +358,7 @@ impl Workspace {
         Ok(sqlx::query_as!(
             Workspace,
             r#"INSERT INTO workspaces (id, task_id, container_ref, branch, agent_working_dir, setup_completed_at)
-               VALUES (?, ?2, ?3, ?4, ?5, ?6)
+               VALUES ($1, $2, $3, $4, $5, $6)
                RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, agent_working_dir, setup_completed_at as "setup_completed_at: DateTime<Utc>", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             id,
             task_id,
@@ -362,9 +377,9 @@ impl Workspace {
         new_branch_name: &str,
     ) -> Result<(), WorkspaceError> {
         sqlx::query!(
-            "UPDATE workspaces SET branch = ?, updated_at = ?NOW() WHERE id = ?2",
+            "UPDATE workspaces SET branch = $1, updated_at = NOW() WHERE id = $2",
             new_branch_name,
-            workspace_id,
+            workspace_id
         )
         .execute(pool)
         .await?;
@@ -381,8 +396,8 @@ impl Workspace {
                       w.task_id as "task_id!: Uuid",
                       t.project_id as "project_id!: Uuid"
                FROM workspaces w
-               JOIN tasks t ON w.task_id = ?t.id
-               WHERE w.container_ref = ??"#,
+               JOIN tasks t ON w.task_id = t.id
+               WHERE w.container_ref = $1"#,
             container_ref
         )
         .fetch_optional(pool)
@@ -394,5 +409,13 @@ impl Workspace {
             task_id: result.task_id,
             project_id: result.project_id,
         })
+    }
+
+    /// Stub for PostgreSQL - rowid is SQLite-specific
+    /// In PostgreSQL, we use UUID primary keys
+    #[allow(dead_code)]
+    pub async fn find_by_rowid(_pool: &PgPool, _rowid: i64) -> Result<Option<Self>, sqlx::Error> {
+        // PostgreSQL doesn't have rowid, this is a stub for compatibility
+        Ok(None)
     }
 }

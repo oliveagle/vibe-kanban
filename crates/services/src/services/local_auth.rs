@@ -8,8 +8,7 @@ use chrono::{DateTime, Duration, Utc};
 use db::DBService;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use sqlx::sqlite::PostgresRow;
-use sqlx::{Row, PgPool};
+use sqlx::{Row, PgPool, postgres::PgRow};
 use thiserror::Error;
 use tracing;
 use uuid::Uuid;
@@ -105,7 +104,7 @@ impl LocalAuthService {
         let default_password = get_default_password();
         
         let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM local_users WHERE username = ?"
+            "SELECT COUNT(*) FROM local_users WHERE username = $1"
         )
         .bind(&default_username)
         .fetch_one(&self.pool)
@@ -129,7 +128,7 @@ impl LocalAuthService {
     ) -> Result<LocalUser, LocalAuthError> {
         // Check if user already exists
         let existing: Option<i64> = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM local_users WHERE username = ?"
+            "SELECT COUNT(*) FROM local_users WHERE username = $1"
         )
         .bind(username)
         .fetch_one(&self.pool)
@@ -147,7 +146,7 @@ impl LocalAuthService {
         let created_at = Utc::now();
 
         sqlx::query(
-            "INSERT INTO local_users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)"
+            "INSERT INTO local_users (id, username, password_hash, created_at) VALUES ($1, $2, $3, $4)"
         )
         .bind(&id)
         .bind(username)
@@ -171,8 +170,8 @@ impl LocalAuthService {
         password: &str,
     ) -> Result<AuthResponse, LocalAuthError> {
         // Fetch user
-        let row: Option<PostgresRow> = sqlx::query(
-            "SELECT id, username, password_hash, created_at FROM local_users WHERE username = ?"
+        let row: Option<PgRow> = sqlx::query(
+            "SELECT id, username, password_hash, created_at FROM local_users WHERE username = $1"
         )
         .bind(username)
         .fetch_optional(&self.pool)
@@ -240,7 +239,7 @@ impl LocalAuthService {
     /// Check if local auth is enabled (users table exists)
     pub async fn is_enabled(&self) -> bool {
         sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='local_users'"
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'local_users'"
         )
         .fetch_one(&self.pool)
         .await

@@ -137,7 +137,7 @@ export function ActionsDropdown({
     if (!attempt?.id) return;
     EditBranchNameDialog.show({
       attemptId: attempt.id,
-      currentBranchName: attempt.branch,
+      currentBranchName: attempt.branch ?? '',
     });
   };
   const handleShare = (e: React.MouseEvent) => {

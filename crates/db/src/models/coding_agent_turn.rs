@@ -38,7 +38,7 @@ impl CodingAgentTurn {
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM coding_agent_turns
-               WHERE execution_process_id = "#,
+               WHERE execution_process_id = $1"#,
             execution_process_id
         )
         .fetch_optional(pool)
@@ -60,7 +60,7 @@ impl CodingAgentTurn {
                 created_at as "created_at!: DateTime<Utc>",
                 updated_at as "updated_at!: DateTime<Utc>"
                FROM coding_agent_turns
-               WHERE agent_session_id = ??
+               WHERE agent_session_id = $1
                ORDER BY updated_at DESC
                LIMIT 1"#,
             agent_session_id
@@ -89,7 +89,7 @@ impl CodingAgentTurn {
                 id, execution_process_id, agent_session_id, prompt, summary,
                 created_at, updated_at
                )
-               VALUES (?, ?2, ?3, ?4, ?5, ?6, ?7)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)
                RETURNING
                 id as "id!: Uuid",
                 execution_process_id as "execution_process_id!: Uuid",
@@ -119,8 +119,8 @@ impl CodingAgentTurn {
         let now = Utc::now();
         sqlx::query!(
             r#"UPDATE coding_agent_turns
-               SET agent_session_id = ?, updated_at = ?2
-               WHERE execution_process_id = ?3"#,
+               SET agent_session_id = $1, updated_at = $2
+               WHERE execution_process_id = $3"#,
             agent_session_id,
             now,
             execution_process_id
@@ -140,8 +140,8 @@ impl CodingAgentTurn {
         let now = Utc::now();
         sqlx::query!(
             r#"UPDATE coding_agent_turns
-               SET summary = ?, updated_at = ?2
-               WHERE execution_process_id = ?3"#,
+               SET summary = $1, updated_at = $2
+               WHERE execution_process_id = $3"#,
             summary,
             now,
             execution_process_id

@@ -47,14 +47,6 @@ export function BulkOperations({
     }
   };
 
-  const handleTaskSelection = (task: TaskWithAttemptStatus, checked: boolean) => {
-    if (checked) {
-      onSelectionChange([...selectedTasks, task]);
-    } else {
-      onSelectionChange(selectedTasks.filter(t => t.id !== task.id));
-    }
-  };
-
   const handleBulkStatusUpdate = async (status: TaskStatus) => {
     if (selectedTasks.length === 0) return;
 
@@ -63,7 +55,9 @@ export function BulkOperations({
       const taskIds = selectedTasks.map(task => task.id);
       await tasksApi.bulkUpdate(projectId, {
         task_ids: taskIds,
-        status
+        status,
+        title: null,
+        description: null
       });
       
       alert(`Successfully updated ${selectedTasks.length} tasks to ${status}`);
@@ -117,9 +111,7 @@ export function BulkOperations({
           <Checkbox
             checked={isAllSelected}
             onCheckedChange={handleSelectAll}
-            ref={(el) => {
-              if (el) el.indeterminate = isIndeterminate;
-            }}
+            data-indeterminate={isIndeterminate}
           />
           <span className="text-sm font-medium">
             {selectedTasks.length > 0 

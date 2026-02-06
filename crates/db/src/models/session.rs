@@ -39,7 +39,7 @@ impl Session {
                       created_at AS "created_at!: DateTime<Utc>",
                       updated_at AS "updated_at!: DateTime<Utc>"
                FROM sessions
-               WHERE id = "#,
+               WHERE id = $1"#,
             id
         )
         .fetch_optional(pool)
@@ -58,7 +58,7 @@ impl Session {
                       created_at AS "created_at!: DateTime<Utc>",
                       updated_at AS "updated_at!: DateTime<Utc>"
                FROM sessions
-               WHERE workspace_id = ?
+               WHERE workspace_id = $1
                ORDER BY created_at DESC"#,
             workspace_id
         )
@@ -79,7 +79,7 @@ impl Session {
                       created_at AS "created_at!: DateTime<Utc>",
                       updated_at AS "updated_at!: DateTime<Utc>"
                FROM sessions
-               WHERE workspace_id = ?
+               WHERE workspace_id = $1
                ORDER BY created_at DESC
                LIMIT 1"#,
             workspace_id
@@ -97,7 +97,7 @@ impl Session {
         Ok(sqlx::query_as!(
             Session,
             r#"INSERT INTO sessions (id, workspace_id, executor)
-               VALUES (?, ?2, ?3)
+               VALUES ($1, $2, $3)
                RETURNING id AS "id!: Uuid",
                          workspace_id AS "workspace_id!: Uuid",
                          executor,

@@ -1,4 +1,6 @@
-use std::{future::Future, str::FromStr};
+use std::{future::Future, str::FromStr, sync::Arc, time::Duration};
+
+use tokio::sync::RwLock;
 
 use db::models::{
     project::Project,
@@ -271,6 +273,8 @@ pub struct TaskServer {
     base_url: String,
     tool_router: ToolRouter<TaskServer>,
     context: Option<McpContext>,
+    /// Cache for tags to avoid repeated API calls (Arc<RwLock> for interior mutability)
+    tags_cache: Arc<RwLock<Option<(Vec<Tag>, std::time::Instant)>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
@@ -298,11 +302,20 @@ pub struct McpContext {
 
 impl TaskServer {
     pub fn new(base_url: &str) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .connect_timeout(Duration::from_secs(10))
+            .pool_idle_timeout(Duration::from_secs(60))
+            .pool_max_idle_per_host(10)
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+        
         Self {
-            client: reqwest::Client::new(),
+            client,
             base_url: base_url.to_string(),
             tool_router: Self::tool_router(),
             context: None,
+            tags_cache: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -366,7 +379,7 @@ impl TaskServer {
             task_id: ctx.task.id,
             task_title: ctx.task.title,
             workspace_id: ctx.workspace.id,
-            workspace_branch: ctx.workspace.branch,
+            workspace_branch: ctx.workspace.branch.unwrap_or_default(),
             workspace_repos,
         })
     }
@@ -443,6 +456,7 @@ impl TaskServer {
     /// Expands @tagname references in text by replacing them with tag content.
     /// Returns the original text if expansion fails (e.g., network error).
     /// Unknown tags are left as-is (not expanded, not an error).
+    /// Uses a 60-second cache to avoid repeated API calls.
     async fn expand_tags(&self, text: &str) -> String {
         // Pattern matches @tagname where tagname is non-whitespace, non-@ characters
         let tag_pattern = match Regex::new(r"@([^\s@]+)") {
@@ -462,16 +476,43 @@ impl TaskServer {
             return text.to_string();
         }
 
-        // Fetch all tags from the API
-        let url = self.url("/api/tags");
-        let tags: Vec<Tag> = match self.client.get(&url).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                match resp.json::<ApiResponseEnvelope<Vec<Tag>>>().await {
-                    Ok(envelope) if envelope.success => envelope.data.unwrap_or_default(),
-                    _ => return text.to_string(),
+        // Check cache first (60 second TTL)
+        const CACHE_TTL: Duration = Duration::from_secs(60);
+        let cache_read = self.tags_cache.read().await;
+        let should_fetch = match cache_read.as_ref() {
+            None => true,
+            Some((_, timestamp)) => timestamp.elapsed() > CACHE_TTL,
+        };
+        drop(cache_read);
+
+        let tags: Vec<Tag> = if should_fetch {
+            // Fetch all tags from the API with timeout
+            let url = self.url("/api/tags");
+            match tokio::time::timeout(
+                Duration::from_secs(5),
+                self.client.get(&url).send(),
+            ).await {
+                Ok(Ok(resp)) if resp.status().is_success() => {
+                    match resp.json::<ApiResponseEnvelope<Vec<Tag>>>().await {
+                        Ok(envelope) if envelope.success => {
+                            let tags = envelope.data.unwrap_or_default();
+                            // Update cache
+                            let mut cache_write = self.tags_cache.write().await;
+                            *cache_write = Some((tags.clone(), std::time::Instant::now()));
+                            tags
+                        }
+                        _ => return text.to_string(),
+                    }
+                }
+                _ => {
+                    tracing::warn!("Failed to fetch tags for expansion, using original text");
+                    return text.to_string();
                 }
             }
-            _ => return text.to_string(),
+        } else {
+            // Use cached tags
+            let cache_read = self.tags_cache.read().await;
+            cache_read.as_ref().map(|(tags, _)| tags.clone()).unwrap_or_default()
         };
 
         // Build a map of tag_name -> content for quick lookup

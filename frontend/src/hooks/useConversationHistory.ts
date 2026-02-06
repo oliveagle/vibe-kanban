@@ -12,6 +12,7 @@ import {
 import { useExecutionProcessesContext } from '@/contexts/ExecutionProcessesContext';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { streamJsonPatchEntries } from '@/utils/streamJsonPatchEntries';
+import { debugLog } from '@/lib/api';
 
 export type PatchTypeWithKey = PatchType & {
   patchKey: string;
@@ -142,6 +143,15 @@ export const useConversationHistory = ({
           console.warn!(
             `Error loading entries for historic execution process ${executionProcess.id}`,
             err
+          );
+          debugLog(
+            'error',
+            `Error loading entries for historic execution process ${executionProcess.id}`,
+            JSON.stringify({
+              url,
+              executionProcessId: executionProcess.id,
+              error: err instanceof Event ? 'WebSocket error' : String(err)
+            })
           );
           controller.close();
           resolve([]);
@@ -526,7 +536,7 @@ export const useConversationHistory = ({
     }, [executionProcesses]);
 
   const loadRemainingEntriesInBatches = useCallback(
-    async (batchSize: number): Promise<boolean> => {
+    async (_batchSize: number): Promise<boolean> => {
       if (!executionProcesses?.current) return false;
 
       // Get processes that need loading (not already loaded, not running)

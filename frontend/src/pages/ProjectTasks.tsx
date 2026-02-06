@@ -180,6 +180,10 @@ export function ProjectTasks() {
     [taskId, tasksById]
   );
 
+  const handleRefreshTasks = useCallback(() => {
+    window.location.reload();
+  }, []);
+
   const selectedSharedTask = useMemo(() => {
     if (!selectedSharedTaskId) return null;
     return sharedTasksById[selectedSharedTaskId] ?? null;

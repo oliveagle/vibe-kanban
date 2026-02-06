@@ -38,7 +38,7 @@ pub struct RepoWithTargetBranch {
 #[derive(Debug, Clone)]
 pub struct RepoWithCopyFiles {
     pub id: Uuid,
-    pub path: PathBuf,
+    pub path: Option<PathBuf>,
     pub name: String,
     pub copy_files: Option<String>,
 }
@@ -47,21 +47,48 @@ pub struct RepoWithCopyFiles {
 #[derive(Debug, Clone, FromRow)]
 pub struct WorkspaceRepoQueryRow {
     pub id: Uuid,
-    pub path: String,
+    pub path: Option<String>,
     pub name: String,
-    pub display_name: String,
+    pub display_name: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub target_branch: String,
+}
+
+impl WorkspaceRepoQueryRow {
+    pub fn into_repo_with_target_branch(self) -> RepoWithTargetBranch {
+        RepoWithTargetBranch {
+            repo: Repo {
+                id: self.id,
+                path: self.path,
+                name: self.name,
+                display_name: self.display_name,
+                created_at: self.created_at,
+                updated_at: self.updated_at,
+            },
+            target_branch: self.target_branch,
+        }
+    }
 }
 
 /// Query row for find_repos_with_copy_files
 #[derive(Debug, Clone, FromRow)]
 pub struct RepoWithCopyFilesRow {
     pub id: Uuid,
-    pub path: String,
+    pub path: Option<String>,
     pub name: String,
     pub copy_files: Option<String>,
+}
+
+impl RepoWithCopyFilesRow {
+    pub fn into_repo_with_copy_files(self) -> RepoWithCopyFiles {
+        RepoWithCopyFiles {
+            id: self.id,
+            path: self.path.map(PathBuf::from),
+            name: self.name,
+            copy_files: self.copy_files,
+        }
+    }
 }
 
 impl WorkspaceRepo {
@@ -77,7 +104,7 @@ impl WorkspaceRepo {
             let workspace_repo = sqlx::query_as!(
                 WorkspaceRepo,
                 r#"INSERT INTO workspace_repos (id, workspace_id, repo_id, target_branch)
-                   VALUES (?, ?2, ?3, ?4)
+                   VALUES ($1, $2, $3, $4)
                    RETURNING id as "id!: Uuid",
                              workspace_id as "workspace_id!: Uuid",
                              repo_id as "repo_id!: Uuid",
@@ -110,7 +137,7 @@ impl WorkspaceRepo {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM workspace_repos
-               WHERE workspace_id = "#,
+               WHERE workspace_id = $1"#,
             workspace_id
         )
         .fetch_all(pool)
@@ -131,7 +158,7 @@ impl WorkspaceRepo {
                       r.updated_at as "updated_at!: DateTime<Utc>"
                FROM repos r
                JOIN workspace_repos wr ON r.id = wr.repo_id
-               WHERE wr.workspace_id = ?
+               WHERE wr.workspace_id = $1
                ORDER BY r.display_name ASC"#,
             workspace_id
         )
@@ -154,27 +181,14 @@ impl WorkspaceRepo {
                       wr.target_branch
                FROM repos r
                JOIN workspace_repos wr ON r.id = wr.repo_id
-               WHERE wr.workspace_id = ?
+               WHERE wr.workspace_id = $1
                ORDER BY r.display_name ASC"#,
             workspace_id
         )
         .fetch_all(pool)
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|row| RepoWithTargetBranch {
-                repo: Repo {
-                    id: row.id,
-                    path: PathBuf::from(row.path),
-                    name: row.name,
-                    display_name: row.display_name,
-                    created_at: row.created_at,
-                    updated_at: row.updated_at,
-                },
-                target_branch: row.target_branch,
-            })
-            .collect())
+        Ok(rows.into_iter().map(WorkspaceRepoQueryRow::into_repo_with_target_branch).collect())
     }
 
     pub async fn find_by_workspace_and_repo_id(
@@ -191,7 +205,7 @@ impl WorkspaceRepo {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM workspace_repos
-               WHERE workspace_id = ? AND repo_id = ?2"#,
+               WHERE workspace_id = $1 AND repo_id = $2"#,
             workspace_id,
             repo_id
         )
@@ -206,7 +220,7 @@ impl WorkspaceRepo {
         new_target_branch: &str,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            "UPDATE workspace_repos SET target_branch = ?, updated_at = NOW() WHERE workspace_id = ?2 AND repo_id = ?3",
+            "UPDATE workspace_repos SET target_branch = $1, updated_at = NOW() WHERE workspace_id = $2 AND repo_id = $3",
             new_target_branch,
             workspace_id,
             repo_id
@@ -224,12 +238,12 @@ impl WorkspaceRepo {
     ) -> Result<u64, sqlx::Error> {
         let result: sqlx::postgres::PgQueryResult = sqlx::query!(
             r#"UPDATE workspace_repos
-               SET target_branch = ?, updated_at = NOW()
-               WHERE target_branch = ?2
+               SET target_branch = $1, updated_at = NOW()
+               WHERE target_branch = $2
                  AND workspace_id IN (
                      SELECT w.id FROM workspaces w
                      JOIN tasks t ON w.task_id = t.id
-                     WHERE t.parent_workspace_id = ?3
+                     WHERE t.parent_workspace_id = $3
                  )"#,
             new_branch,
             old_branch,
@@ -255,7 +269,7 @@ impl WorkspaceRepo {
                FROM repos r
                JOIN workspace_repos wr ON r.id = wr.repo_id
                JOIN workspaces w ON wr.workspace_id = w.id
-               WHERE w.task_id = ?
+               WHERE w.task_id = $1
                ORDER BY r.display_name ASC"#,
             task_id
         )
@@ -277,20 +291,12 @@ impl WorkspaceRepo {
                JOIN workspaces w ON w.id = wr.workspace_id
                JOIN tasks t ON t.id = w.task_id
                LEFT JOIN project_repos pr ON pr.project_id = t.project_id AND pr.repo_id = r.id
-               WHERE wr.workspace_id = "#,
+               WHERE wr.workspace_id = $1"#,
             workspace_id
         )
         .fetch_all(pool)
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|row: RepoWithCopyFilesRow| RepoWithCopyFiles {
-                id: row.id,
-                path: PathBuf::from(row.path),
-                name: row.name,
-                copy_files: row.copy_files,
-            })
-            .collect())
+        Ok(rows.into_iter().map(RepoWithCopyFilesRow::into_repo_with_copy_files).collect())
     }
 }

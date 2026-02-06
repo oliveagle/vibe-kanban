@@ -400,7 +400,7 @@ impl ClaudeLogProcessor {
                             if !session_id_extracted
                                 && let Some(session_id) = Self::extract_session_id(&claude_json)
                             {
-                                msg_store.push_session_id(session_id);
+                                msg_store.push_session_id(session_id).await;
                                 session_id_extracted = true;
                             }
 
@@ -410,7 +410,7 @@ impl ClaudeLogProcessor {
                                 &entry_index_provider,
                             );
                             for patch in patches {
-                                msg_store.push_patch(patch);
+                                msg_store.push_patch(patch).await;
                             }
                         }
                         Err(_) => {
@@ -426,7 +426,7 @@ impl ClaudeLogProcessor {
                                 let patch_id = entry_index_provider.next();
                                 let patch =
                                     ConversationPatch::add_normalized_entry(patch_id, entry);
-                                msg_store.push_patch(patch);
+                                msg_store.push_patch(patch).await;
                             }
                         }
                     }
@@ -447,7 +447,7 @@ impl ClaudeLogProcessor {
 
                 let patch_id = entry_index_provider.next();
                 let patch = ConversationPatch::add_normalized_entry(patch_id, entry);
-                msg_store.push_patch(patch);
+                msg_store.push_patch(patch).await;
             }
         });
     }

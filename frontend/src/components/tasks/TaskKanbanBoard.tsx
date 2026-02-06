@@ -7,7 +7,7 @@ import {
   KanbanHeader,
   KanbanProvider,
 } from '@/components/ui/shadcn-io/kanban';
-import { TaskCard } from './TaskCard';
+
 import { SelectableTaskCard } from './SelectableTaskCard';
 import { BulkOperations } from './BulkOperations';
 import type { TaskStatus, TaskWithAttemptStatus } from 'shared/types';

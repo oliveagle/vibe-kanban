@@ -9,7 +9,7 @@ use uuid::Uuid;
 pub struct ExecutionProcessLogs {
     pub execution_id: Uuid,
     pub logs: String, // JSONL format
-    pub byte_size: i64,
+    pub byte_size: i32,
     pub inserted_at: DateTime<Utc>,
 }
 
@@ -23,11 +23,11 @@ impl ExecutionProcessLogs {
             ExecutionProcessLogs,
             r#"SELECT 
                 execution_id as "execution_id!: Uuid",
-                logs,
+                logs as "logs!: String",
                 byte_size,
                 inserted_at as "inserted_at!: DateTime<Utc>"
-               FROM execution_process_logs 
-               WHERE execution_id = ?
+               FROM execution_process_logs
+               WHERE execution_id = $1
                ORDER BY inserted_at ASC"#,
             execution_id
         )
@@ -53,12 +53,13 @@ impl ExecutionProcessLogs {
         execution_id: Uuid,
         jsonl_line: &str,
     ) -> Result<(), sqlx::Error> {
-        let byte_size = jsonl_line.len() as i64;
+        let byte_size = jsonl_line.len() as i32;
+        let logs_json = serde_json::Value::String(jsonl_line.to_string());
         sqlx::query!(
             r#"INSERT INTO execution_process_logs (execution_id, logs, byte_size, inserted_at)
-               VALUES (?, ?2, ?3, NOW())"#,
+               VALUES ($1, $2, $3, NOW())"#,
             execution_id,
-            jsonl_line,
+            logs_json,
             byte_size
         )
         .execute(pool)

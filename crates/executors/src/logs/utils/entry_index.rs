@@ -1,10 +1,11 @@
 //! Entry Index Provider for thread-safe monotonic indexing
 
 use std::sync::{
-    Arc,
     atomic::{AtomicUsize, Ordering},
+    Arc,
 };
 
+use futures::executor::block_on;
 use json_patch::PatchOperation;
 use workspace_utils::{log_msg::LogMsg, msg_store::MsgStore};
 
@@ -37,8 +38,8 @@ impl EntryIndexProvider {
     pub fn start_from(msg_store: &MsgStore) -> Self {
         let provider = EntryIndexProvider::new();
 
-        let max_index: Option<usize> = msg_store
-            .get_history()
+        let history = block_on(msg_store.get_history());
+        let max_index: Option<usize> = history
             .iter()
             .filter_map(|msg| {
                 if let LogMsg::JsonPatch(patch) = msg {

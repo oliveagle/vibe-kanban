@@ -334,7 +334,7 @@ pub async fn merge_task_attempt(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = workspace_path.join(repo.name);
+    let worktree_path = workspace_path.join(repo.name.clone());
 
     let task = workspace
         .parent_task(pool)
@@ -354,9 +354,9 @@ pub async fn merge_task_attempt(
     }
 
     let merge_commit_id = deployment.git().merge_changes(
-        &repo.path,
+        Path::new(&repo.path.clone().unwrap_or_default()),
         &worktree_path,
-        &workspace.branch,
+        workspace.branch.as_deref().unwrap_or("main"),
         &workspace_repo.target_branch,
         &commit_message,
     )?;
@@ -453,7 +453,7 @@ pub async fn push_task_attempt_branch(
 
     match deployment
         .git()
-        .push_to_github(&worktree_path, &workspace.branch, false)
+        .push_to_github(&worktree_path, workspace.branch.as_deref().unwrap_or("main"), false)
     {
         Ok(_) => Ok(ResponseJson(ApiResponse::success(()))),
         Err(GitServiceError::GitCLI(GitCliError::PushRejected(_))) => Ok(ResponseJson(
@@ -491,7 +491,7 @@ pub async fn force_push_task_attempt_branch(
 
     deployment
         .git()
-        .push_to_github(&worktree_path, &workspace.branch, true)?;
+        .push_to_github(&worktree_path, workspace.branch.as_deref().unwrap_or("main"), true)?;
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
@@ -678,21 +678,21 @@ pub async fn get_task_attempt_branch_status(
 
         let target_branch_type = deployment
             .git()
-            .find_branch_type(&repo.path, &target_branch)?;
+            .find_branch_type(&repo.path_buf().unwrap_or_default(), &target_branch)?;
 
         let (commits_ahead, commits_behind) = match target_branch_type {
             BranchType::Local => {
                 let (a, b) = deployment.git().get_branch_status(
-                    &repo.path,
-                    &workspace.branch,
+                    &repo.path_buf().unwrap_or_default(),
+                    workspace.branch.as_deref().unwrap_or("main"),
                     &target_branch,
                 )?;
                 (Some(a), Some(b))
             }
             BranchType::Remote => {
                 let (ahead, behind) = deployment.git().get_remote_branch_status(
-                    &repo.path,
-                    &workspace.branch,
+                    &repo.path_buf().unwrap_or_default(),
+                    workspace.branch.as_deref().unwrap_or("main"),
                     Some(&target_branch),
                 )?;
                 (Some(ahead), Some(behind))
@@ -710,7 +710,7 @@ pub async fn get_task_attempt_branch_status(
         {
             match deployment
                 .git()
-                .get_remote_branch_status(&repo.path, &workspace.branch, None)
+                .get_remote_branch_status(&repo.path_buf().unwrap_or_default(), workspace.branch.as_deref().unwrap_or("main"), None)
             {
                 Ok((ahead, behind)) => (Some(ahead), Some(behind)),
                 Err(_) => (None, None),
@@ -794,7 +794,7 @@ pub async fn change_target_branch(
 
     if !deployment
         .git()
-        .check_branch_exists(&repo.path, &new_target_branch)?
+        .check_branch_exists(&repo.path_buf().unwrap_or_default(), &new_target_branch)?
     {
         return Ok(ResponseJson(ApiResponse::error(
             format!(
@@ -810,7 +810,7 @@ pub async fn change_target_branch(
     let status =
         deployment
             .git()
-            .get_branch_status(&repo.path, &workspace.branch, &new_target_branch)?;
+            .get_branch_status(&repo.path_buf().unwrap_or_default(), workspace.branch.as_deref().unwrap_or("main"), &new_target_branch)?;
 
     deployment
         .track_if_analytics_allowed(
@@ -849,9 +849,9 @@ pub async fn rename_branch(
             RenameBranchError::InvalidBranchNameFormat,
         )));
     }
-    if new_branch_name == workspace.branch {
+    if new_branch_name == workspace.branch.clone().unwrap_or_default() {
         return Ok(ResponseJson(ApiResponse::success(RenameBranchResponse {
-            branch: workspace.branch.clone(),
+            branch: workspace.branch.clone().unwrap_or_default(),
         })));
     }
 
@@ -880,7 +880,7 @@ pub async fn rename_branch(
 
         if deployment
             .git()
-            .check_branch_exists(&repo.path, new_branch_name)?
+            .check_branch_exists(&repo.path_buf().unwrap_or_default(), new_branch_name)?
         {
             return Ok(ResponseJson(ApiResponse::error_with_data(
                 RenameBranchError::BranchAlreadyExists {
@@ -899,7 +899,7 @@ pub async fn rename_branch(
     }
 
     // Rename all repos with rollback
-    let old_branch = workspace.branch.clone();
+    let old_branch = workspace.branch.clone().unwrap_or_default();
     let mut renamed_repos: Vec<&Repo> = Vec::new();
 
     for repo in &repos {
@@ -907,7 +907,7 @@ pub async fn rename_branch(
 
         match deployment.git().rename_local_branch(
             &worktree_path,
-            &workspace.branch,
+            workspace.branch.as_deref().unwrap_or("main"),
             new_branch_name,
         ) {
             Ok(()) => {
@@ -997,7 +997,7 @@ pub async fn rebase_task_attempt(
 
     match deployment
         .git()
-        .check_branch_exists(&repo.path, &new_base_branch)?
+        .check_branch_exists(&repo.path_buf().unwrap_or_default(), &new_base_branch)?
     {
         true => {
             WorkspaceRepo::update_target_branch(
@@ -1027,11 +1027,11 @@ pub async fn rebase_task_attempt(
     let worktree_path = workspace_path.join(&repo.name);
 
     let result = deployment.git().rebase_branch(
-        &repo.path,
+        &repo.path_buf().unwrap_or_default(),
         &worktree_path,
         &new_base_branch,
         &old_base_branch,
-        &workspace.branch.clone(),
+        workspace.branch.as_deref().unwrap_or("main").clone(),
     );
     if let Err(e) = result {
         use services::services::git::GitServiceError;

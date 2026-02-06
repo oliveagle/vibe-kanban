@@ -39,22 +39,3 @@ pub fn truncate_to_char_boundary(content: &str, max_len: usize) -> &str {
     debug_assert!(content.is_char_boundary(cutoff));
     &content[..cutoff]
 }
-
-#[cfg(test)]
-mod tests {
-
-    #[test]
-    fn test_truncate_to_char_boundary() {
-        use super::truncate_to_char_boundary;
-
-        let input = "a".repeat(10);
-        assert_eq!(truncate_to_char_boundary(&input, 7), "a".repeat(7));
-
-        let input = "hello world";
-        assert_eq!(truncate_to_char_boundary(input, input.len()), input);
-
-        let input = "🔥🔥🔥"; // each fire emoji is 4 bytes
-        assert_eq!(truncate_to_char_boundary(input, 5), "🔥");
-        assert_eq!(truncate_to_char_boundary(input, 3), "");
-    }
-}

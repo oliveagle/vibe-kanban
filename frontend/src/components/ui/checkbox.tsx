@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-interface CheckboxProps {
+interface CheckboxProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   id?: string;
   checked?: boolean;
   onCheckedChange?: (checked: boolean) => void;

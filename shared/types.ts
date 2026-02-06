@@ -14,7 +14,7 @@ export type UserData = { user_id: string, first_name: string | null, last_name: 
 
 export type Project = { id: string, name: string, dev_script: string | null, dev_script_working_dir: string | null, default_agent_working_dir: string | null, remote_project_id: string | null, created_at: Date, updated_at: Date, };
 
-export type CreateProject = { name: string, repositories: Array<CreateProjectRepo>, };
+export type CreateProject = { name: string, repositories: Array<CreateProjectRepo>, organization_id: string | null, };
 
 export type UpdateProject = { name: string | null, dev_script: string | null, dev_script_working_dir: string | null, default_agent_working_dir: string | null, };
 
@@ -22,7 +22,7 @@ export type SearchResult = { path: string, is_file: boolean, match_type: SearchM
 
 export type SearchMatchType = "FileName" | "DirectoryName" | "FullPath";
 
-export type Repo = { id: string, path: string, name: string, display_name: string, created_at: Date, updated_at: Date, };
+export type Repo = { id: string, path: string | null, name: string, display_name: string | null, created_at: Date, updated_at: Date, };
 
 export type ProjectRepo = { id: string, project_id: string, repo_id: string, setup_script: string | null, cleanup_script: string | null, copy_files: string | null, parallel_setup_script: boolean, };
 
@@ -34,7 +34,7 @@ export type WorkspaceRepo = { id: string, workspace_id: string, repo_id: string,
 
 export type CreateWorkspaceRepo = { repo_id: string, target_branch: string, };
 
-export type RepoWithTargetBranch = { target_branch: string, id: string, path: string, name: string, display_name: string, created_at: Date, updated_at: Date, };
+export type RepoWithTargetBranch = { target_branch: string, id: string, path: string | null, name: string, display_name: string | null, created_at: Date, updated_at: Date, };
 
 export type Tag = { id: string, tag_name: string, content: string, created_at: string, updated_at: string, };
 
@@ -48,15 +48,14 @@ export type Task = { id: string, project_id: string, title: string, description:
 
 export type TaskWithAttemptStatus = { has_in_progress_attempt: boolean, last_attempt_failed: boolean, executor: string, id: string, project_id: string, title: string, description: string | null, status: TaskStatus, parent_workspace_id: string | null, shared_task_id: string | null, created_at: string, updated_at: string, };
 
-export type BulkUpdateTasks = { task_ids: Array<string>, status: TaskStatus | null, title: string | null, description: string | null, };
-
-export type BulkDeleteTasks = { task_ids: Array<string>, };
-
 export type TaskRelationships = { parent_task: Task | null, current_workspace: Workspace, children: Array<Task>, };
 
 export type CreateTask = { project_id: string, title: string, description: string | null, status: TaskStatus | null, parent_workspace_id: string | null, image_ids: Array<string> | null, shared_task_id: string | null, };
 
 export type UpdateTask = { title: string | null, description: string | null, status: TaskStatus | null, parent_workspace_id: string | null, image_ids: Array<string> | null, };
+export type BulkUpdateTasks = { task_ids: Array<string>, status: TaskStatus | null, title: string | null, description: string | null, };
+
+export type BulkDeleteTasks = { task_ids: Array<string>, };
 
 export type DraftFollowUpData = { message: string, variant: string | null, };
 
@@ -74,11 +73,11 @@ export type Image = { id: string, file_path: string, original_name: string, mime
 
 export type CreateImage = { file_path: string, original_name: string, mime_type: string | null, size_bytes: bigint, hash: string, };
 
-export type Workspace = { id: string, task_id: string, container_ref: string | null, branch: string, agent_working_dir: string | null, setup_completed_at: string | null, created_at: string, updated_at: string, };
+export type Workspace = { id: string, task_id: string, container_ref: string | null, branch: string | null, agent_working_dir: string | null, setup_completed_at: string | null, created_at: string, updated_at: string, };
 
 export type Session = { id: string, workspace_id: string, executor: string | null, created_at: string, updated_at: string, };
 
-export type ExecutionProcess = { id: string, session_id: string, run_reason: ExecutionProcessRunReason, executor_action: ExecutorAction, status: ExecutionProcessStatus, exit_code: bigint | null, 
+export type ExecutionProcess = { id: string, session_id: string, run_reason: ExecutionProcessRunReason, executor_action: ExecutorAction, status: ExecutionProcessStatus, exit_code: number | null, 
 /**
  * dropped: true if this process is excluded from the current
  * history view (due to restore/trimming). Hidden from logs/timeline;
@@ -435,7 +434,7 @@ export type Autonomy = "normal" | "low" | "medium" | "high" | "skip-permissions-
 
 export type DroidReasoningEffort = "none" | "dynamic" | "off" | "low" | "medium" | "high";
 
-export type AppendPrompt = string | null;
+export type AppendPrompt = { prefix: string | null, suffix: string | null, };
 
 export type CodingAgentInitialRequest = { prompt: string, 
 /**

@@ -26,7 +26,7 @@ impl DBService {
             .connect(&database_url)
             .await?;
         
-        sqlx::migrate!("./migrations").run(&pool).await?;
+        sqlx::migrate!("./migrations_postgres").run(&pool).await?;
         Ok(DBService { pool })
     }
 
@@ -36,7 +36,7 @@ impl DBService {
             .connect(database_url)
             .await?;
         
-        sqlx::migrate!("./migrations").run(&pool).await?;
+        sqlx::migrate!("./migrations_postgres").run(&pool).await?;
         Ok(DBService { pool })
     }
 }

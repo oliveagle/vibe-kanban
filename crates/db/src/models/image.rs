@@ -45,7 +45,7 @@ impl Image {
         sqlx::query_as!(
             Image,
             r#"INSERT INTO images (id, file_path, original_name, mime_type, size_bytes, hash)
-               VALUES (?, ?2, ?3, ?4, ?5, ?6)
+               VALUES ($1, $2, $3, $4, $5, $6)
                RETURNING id as "id!: Uuid", 
                          file_path as "file_path!", 
                          original_name as "original_name!", 
@@ -77,7 +77,7 @@ impl Image {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM images
-               WHERE hash = "#,
+               WHERE hash = $1"#,
             hash
         )
         .fetch_optional(pool)
@@ -96,7 +96,7 @@ impl Image {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM images
-               WHERE id = "#,
+               WHERE id = $1"#,
             id
         )
         .fetch_optional(pool)
@@ -118,7 +118,7 @@ impl Image {
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM images
-               WHERE file_path = "#,
+               WHERE file_path = $1"#,
             file_path
         )
         .fetch_optional(pool)
@@ -141,7 +141,7 @@ impl Image {
                       i.updated_at as "updated_at!: DateTime<Utc>"
                FROM images i
                JOIN task_images ti ON i.id = ti.image_id
-               WHERE ti.task_id = ?
+               WHERE ti.task_id = $1
                ORDER BY ti.created_at"#,
             task_id
         )
@@ -150,9 +150,9 @@ impl Image {
     }
 
     pub async fn delete(pool: &PgPool, id: Uuid) -> Result<(), sqlx::Error> {
-        sqlx::query!(r#"DELETE FROM images WHERE id = "#, id)
+        sqlx::query!(r#"DELETE FROM images WHERE id = $1"#, id)
             .execute(pool)
-            .await?;
+            .await;
         Ok(())
     }
 
@@ -187,9 +187,9 @@ impl TaskImage {
             let id = Uuid::new_v4();
             sqlx::query!(
                 r#"INSERT INTO task_images (id, task_id, image_id)
-                   SELECT ?, ?2, ?3
+                   SELECT $1, $2, $3
                    WHERE NOT EXISTS (
-                       SELECT 1 FROM task_images WHERE task_id = ?2 AND image_id = ?3
+                       SELECT 1 FROM task_images WHERE task_id = $2 AND image_id = $3
                    )"#,
                 id,
                 task_id,
@@ -202,9 +202,9 @@ impl TaskImage {
     }
 
     pub async fn delete_by_task_id(pool: &PgPool, task_id: Uuid) -> Result<(), sqlx::Error> {
-        sqlx::query!(r#"DELETE FROM task_images WHERE task_id = "#, task_id)
+        sqlx::query!(r#"DELETE FROM task_images WHERE task_id = $1"#, task_id)
             .execute(pool)
-            .await?;
+            .await;
         Ok(())
     }
 
@@ -218,7 +218,7 @@ impl TaskImage {
             r#"SELECT EXISTS(
                 SELECT 1
                 FROM task_images
-                WHERE task_id = ? AND image_id = ?2
+                WHERE task_id = $1 AND image_id = $2
                ) AS "exists!: bool"
             "#,
             task_id,

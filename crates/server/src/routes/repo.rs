@@ -70,7 +70,7 @@ pub async fn get_repo_branches(
         .get_by_id(&deployment.db().pool, repo_id)
         .await?;
 
-    let branches = deployment.git().get_all_branches(&repo.path)?;
+    let branches = deployment.git().get_all_branches(&repo.path_buf().unwrap_or_default())?;
     Ok(ResponseJson(ApiResponse::success(branches)))
 }
 

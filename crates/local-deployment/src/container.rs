@@ -392,7 +392,7 @@ impl LocalContainerService {
 
             let (exit_code, status) = match status_result {
                 Ok(exit_status) => {
-                    let code = exit_status.code().unwrap_or(-1) as i64;
+                    let code = exit_status.code().unwrap_or(-1) as i32;
                     let status = if exit_status.success() {
                         ExecutionProcessStatus::Completed
                     } else {
@@ -648,18 +648,18 @@ impl LocalContainerService {
     }
 
     /// Extract the last assistant message from the MsgStore history
-    fn extract_last_assistant_message(&self, exec_id: &Uuid) -> Option<String> {
+    async fn extract_last_assistant_message(&self, exec_id: &Uuid) -> Option<String> {
         // Get the MsgStore for this execution
         let msg_stores = self.msg_stores.try_read().ok()?;
         let msg_store = msg_stores.get(exec_id)?;
 
         // Get the history and scan in reverse for the last assistant message
-        let history = msg_store.get_history();
+        let history = msg_store.get_history().await;
 
         for msg in history.iter().rev() {
             if let LogMsg::JsonPatch(patch) = msg {
                 // Try to extract a NormalizedEntry from the patch
-                if let Some((_, entry)) = extract_normalized_entry_from_patch(patch)
+                if let Some((_, entry)) = extract_normalized_entry_from_patch(&patch)
                     && matches!(entry.entry_type, NormalizedEntryType::AssistantMessage)
                 {
                     let content = entry.content.trim();
@@ -686,7 +686,7 @@ impl LocalContainerService {
         if let Some(turn) = turn {
             // Only update if summary is not already set
             if turn.summary.is_none() {
-                if let Some(summary) = self.extract_last_assistant_message(exec_id) {
+                if let Some(summary) = self.extract_last_assistant_message(exec_id).await {
                     CodingAgentTurn::update_summary(&self.db.pool, *exec_id, &summary).await?;
                 } else {
                     tracing::debug!("No assistant message found for execution {}", exec_id);
@@ -711,7 +711,7 @@ impl LocalContainerService {
                 && !copy_files.trim().is_empty()
             {
                 let worktree_path = workspace_dir.join(&repo.name);
-                self.copy_project_files(&repo.path, &worktree_path, copy_files)
+                self.copy_project_files(&repo.path.clone().unwrap_or_default(), &worktree_path, copy_files)
                     .await
                     .unwrap_or_else(|e| {
                         tracing::warn!(
@@ -934,7 +934,7 @@ impl ContainerService for LocalContainerService {
         let created_workspace = WorkspaceManager::create_workspace(
             &workspace_dir,
             &workspace_inputs,
-            &workspace.branch,
+            workspace.branch.as_deref().unwrap_or("main"),
         )
         .await?;
 
@@ -990,7 +990,7 @@ impl ContainerService for LocalContainerService {
             WorkspaceManager::get_workspace_base_dir().join(&workspace_dir_name)
         };
 
-        WorkspaceManager::ensure_workspace_exists(&workspace_dir, &repositories, &workspace.branch)
+        WorkspaceManager::ensure_workspace_exists(&workspace_dir, &repositories, workspace.branch.as_deref().unwrap_or("main"))
             .await?;
 
         if workspace.container_ref.is_none() {
@@ -1085,7 +1085,7 @@ impl ContainerService for LocalContainerService {
         env.insert("VK_PROJECT_ID", project.id.to_string());
         env.insert("VK_TASK_ID", task.id.to_string());
         env.insert("VK_WORKSPACE_ID", workspace.id.to_string());
-        env.insert("VK_WORKSPACE_BRANCH", &workspace.branch);
+        env.insert("VK_WORKSPACE_BRANCH", workspace.branch.as_deref().unwrap_or("main"));
 
         // Create the child and stream, add to execution tracker with timeout
         let mut spawned = tokio::time::timeout(
@@ -1128,7 +1128,7 @@ impl ContainerService for LocalContainerService {
             .ok_or_else(|| {
                 ContainerError::Other(anyhow!("Child process not found for execution"))
             })?;
-        let exit_code = if status == ExecutionProcessStatus::Completed {
+        let exit_code: Option<i32> = if status == ExecutionProcessStatus::Completed {
             Some(0)
         } else {
             None
@@ -1245,7 +1245,7 @@ impl ContainerService for LocalContainerService {
 
         for repo in repositories {
             let worktree_path = workspace_root.join(&repo.name);
-            let branch = &workspace.branch;
+            let branch = workspace.branch.as_deref().unwrap_or("main");
 
             let Some(target_branch) = target_branches.get(&repo.id) else {
                 tracing::warn!(
@@ -1257,7 +1257,7 @@ impl ContainerService for LocalContainerService {
 
             let base_commit = match self
                 .git()
-                .get_base_commit(&repo.path, branch, target_branch)
+                .get_base_commit(&repo.path_buf().unwrap_or_default(), branch, target_branch)
             {
                 Ok(c) => c,
                 Err(e) => {
