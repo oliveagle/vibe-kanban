@@ -361,7 +361,7 @@ impl DatabaseBackend {
     }
 
     async fn load_for_user(&self, username: &str) -> std::io::Result<Option<StoredCredentials>> {
-        let result = sqlx::query!(
+        let result: Option<_> = sqlx::query!(
             r#"
             SELECT refresh_token
             FROM user_credentials
