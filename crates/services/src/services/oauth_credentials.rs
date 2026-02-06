@@ -61,10 +61,10 @@ impl OAuthCredentials {
         Ok(())
     }
 
-    pub async fn load_for_user(&self, username: &str) -> std::io::Result<()> {
+    pub async fn load_for_user(&self, username: &str) -> std::io::Result<Option<Credentials>> {
         let creds = self.backend.load_for_user(username).await?.map(Credentials::from);
-        *self.inner.write().await = creds;
-        Ok(())
+        *self.inner.write().await = creds.clone();
+        Ok(creds)
     }
 
     pub async fn save(&self, creds: &Credentials) -> std::io::Result<()> {
@@ -93,6 +93,10 @@ impl OAuthCredentials {
 
     pub async fn get(&self) -> Option<Credentials> {
         self.inner.read().await.clone()
+    }
+
+    pub async fn get_for_user(&self, username: &str) -> std::io::Result<Option<Credentials>> {
+        self.backend.load_for_user(username).await.map(|opt| opt.map(Credentials::from))
     }
 }
 
@@ -158,12 +162,30 @@ impl StoreBackend for Backend {
         }
     }
 
+    async fn load_for_user(&self, username: &str) -> std::io::Result<Option<StoredCredentials>> {
+        match self {
+            Backend::File(b) => b.load_for_user(username).await,
+            Backend::Database(b) => b.load_for_user(username).await,
+            #[cfg(target_os = "macos")]
+            Backend::Keychain(b) => b.load_for_user(username).await,
+        }
+    }
+
     async fn save(&self, creds: &StoredCredentials) -> std::io::Result<()> {
         match self {
             Backend::File(b) => b.save(creds).await,
             Backend::Database(b) => b.save(creds).await,
             #[cfg(target_os = "macos")]
             Backend::Keychain(b) => b.save(creds).await,
+        }
+    }
+
+    async fn save_for_user(&self, username: &str, creds: &StoredCredentials) -> std::io::Result<()> {
+        match self {
+            Backend::File(b) => b.save_for_user(username, creds).await,
+            Backend::Database(b) => b.save_for_user(username, creds).await,
+            #[cfg(target_os = "macos")]
+            Backend::Keychain(b) => b.save_for_user(username, creds).await,
         }
     }
 
@@ -330,6 +352,43 @@ impl DatabaseBackend {
             WHERE user_id = $1
             "#,
             self.user_id
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| std::io::Error::other(format!("Database error: {}", e)))?;
+
+        Ok(())
+    }
+
+    async fn load_for_user(&self, username: &str) -> std::io::Result<Option<StoredCredentials>> {
+        let result = sqlx::query!(
+            r#"
+            SELECT refresh_token
+            FROM user_credentials
+            WHERE username = $1
+            "#,
+            username
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| std::io::Error::other(format!("Database error: {}", e)))?;
+
+        Ok(result.map(|row| StoredCredentials {
+            refresh_token: row.refresh_token,
+        }))
+    }
+
+    async fn save_for_user(&self, username: &str, creds: &StoredCredentials) -> std::io::Result<()> {
+        sqlx::query!(
+            r#"
+            INSERT INTO user_credentials (username, refresh_token, expires_at)
+            VALUES ($1, $2, NULL)
+            ON CONFLICT (username) DO UPDATE SET
+                refresh_token = EXCLUDED.refresh_token,
+                updated_at = NOW()
+            "#,
+            username,
+            creds.refresh_token
         )
         .execute(&self.pool)
         .await

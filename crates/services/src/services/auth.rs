@@ -36,8 +36,8 @@ impl AuthContext {
         self.oauth.save_for_user(username, creds).await
     }
 
-    pub async fn load_credentials_for_user(&self, username: &str) -> std::io::Result<Option<Credentials>> {
-        self.oauth.load_for_user(username).await
+    pub async fn load_credentials_for_user(&self, username: &str) -> Option<Credentials> {
+        self.oauth.get_for_user(username).await
     }
 
     pub async fn clear_credentials(&self) -> std::io::Result<()> {
