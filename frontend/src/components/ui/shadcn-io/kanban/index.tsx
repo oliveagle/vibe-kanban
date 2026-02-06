@@ -285,7 +285,7 @@ export const KanbanProvider = ({
     >
       <div
         className={cn(
-          'inline-grid grid-flow-col auto-cols-[minmax(200px,400px)] divide-x border-x items-stretch min-h-full',
+          'flex divide-x border-x items-stretch min-h-full',
           className
         )}
       >

@@ -115,11 +115,12 @@ function TaskKanbanBoard({
 
       {/* Kanban Board */}
       <KanbanProvider onDragEnd={onDragEnd}>
-        <div className="flex-1 flex">
-          {Object.entries(columns).map(([status, items]) => {
-            const statusKey = status as TaskStatus;
-            return (
-              <KanbanBoard key={status} id={statusKey}>
+        <div className="flex-1 overflow-auto">
+          <div className="flex min-w-full" style={{ minWidth: `${Object.keys(columns).length * 320}px` }}>
+            {Object.entries(columns).map(([status, items]) => {
+              const statusKey = status as TaskStatus;
+              return (
+                <KanbanBoard key={status} id={statusKey} className="w-80 min-w-[320px] flex-shrink-0">
                 <KanbanHeader
                   name={statusLabels[statusKey]}
                   color={statusBoardColors[statusKey]}
@@ -168,6 +169,7 @@ function TaskKanbanBoard({
               </KanbanBoard>
             );
           })}
+          </div>
         </div>
       </KanbanProvider>
     </div>
