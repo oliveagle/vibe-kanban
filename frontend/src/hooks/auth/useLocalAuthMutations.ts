@@ -40,8 +40,11 @@ export function useLocalAuthMutations() {
         body: JSON.stringify(credentials),
       });
       const data = await handleResponse<LocalLoginResponse>(response);
+      console.log('[login] Got response:', data);
       // Save access_token to localStorage for subsequent requests
+      console.log('[login] Saving to localStorage:', data.access_token ? '***' : 'null');
       localStorage.setItem('access_token', data.access_token);
+      console.log('[login] Token saved, checking localStorage:', localStorage.getItem('access_token') ? '***' : 'null');
       return data;
     },
     retry: false, // Don't retry login on failure

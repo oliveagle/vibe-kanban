@@ -123,8 +123,14 @@ const makeRequest = async (url: string, options: RequestInit = {}) => {
 
   // Add Authorization header if token exists
   const token = localStorage.getItem('access_token');
+  console.log('[makeRequest] token from localStorage:', token ? '***' : 'null');
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);
+    console.log('[makeRequest] Added Authorization header');
+  } else if (headers.has('Authorization')) {
+    console.log('[makeRequest] Authorization header already exists, not overwriting');
+  } else {
+    console.log('[makeRequest] No token, not adding Authorization header');
   }
 
   const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
