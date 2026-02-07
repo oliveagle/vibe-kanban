@@ -50,6 +50,7 @@ strum = "0.27.2"
 regex = "1"
 dotenv = "0.15"
 tower-http = { version = "0.6", features = ["cors"] }
+serde_urlencoded = "0.7"
 
 [build-dependencies]
 dotenv = "0.15"

@@ -162,7 +162,7 @@ impl ExecutionProcess {
             JOIN sessions s ON s.id = ep.session_id
             JOIN execution_process_repo_states eprs ON eprs.execution_process_id = ep.id
             JOIN repos r ON r.id = eprs.repo_id
-            JOIN workspaces w ON w.id = s.workspace_id
+            JOIN task_workspaces w ON w.id = s.workspace_id
             JOIN workspace_repos wr ON wr.workspace_id = w.id AND wr.repo_id = eprs.repo_id
             LEFT JOIN execution_process_repo_states prev
               ON prev.execution_process_id = (
@@ -294,7 +294,7 @@ impl ExecutionProcess {
                       ep.dropped as "dropped!: bool", ep.started_at as "started_at!: DateTime<Utc>", ep.completed_at as "completed_at: DateTime<Utc>", ep.created_at as "created_at!: DateTime<Utc>", ep.updated_at as "updated_at!: DateTime<Utc>"
                FROM execution_processes ep
                JOIN sessions s ON ep.session_id = s.id
-               JOIN workspaces w ON s.workspace_id = w.id
+               JOIN task_workspaces w ON s.workspace_id = w.id
                JOIN tasks t ON w.task_id = t.id
                WHERE ep.status = 'running' AND ep.run_reason = 'devserver' AND t.project_id = $1
                ORDER BY ep.created_at ASC"#,

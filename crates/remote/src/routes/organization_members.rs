@@ -347,7 +347,7 @@ pub async fn remove_member(
     .ok_or_else(|| ErrorResponse::new(StatusCode::NOT_FOUND, "Member not found"))?;
 
     if target.role == MemberRole::Admin {
-        let admin_ids = sqlx::query_scalar!(
+        let admin_ids: Vec<Uuid> = sqlx::query_scalar!(
             r#"
             SELECT user_id
             FROM organization_member_metadata
@@ -444,7 +444,7 @@ pub async fn update_member_role(
     }
 
     if target.role == MemberRole::Admin && payload.role == MemberRole::Member {
-        let admin_ids = sqlx::query_scalar!(
+        let admin_ids: Vec<Uuid> = sqlx::query_scalar!(
             r#"
             SELECT user_id
             FROM organization_member_metadata

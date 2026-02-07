@@ -316,35 +316,33 @@ impl DatabaseBackend {
     }
 
     async fn load_for_user(&self, username: &str) -> std::io::Result<Option<StoredCredentials>> {
-        let result: Option<_> = sqlx::query!(
+        let result: Option<String> = sqlx::query_scalar(
             r#"
             SELECT refresh_token
             FROM user_credentials
             WHERE username = $1
             "#,
-            username
         )
+        .bind(username)
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| std::io::Error::other(format!("Database error: {}", e)))?;
 
-        Ok(result.map(|row| StoredCredentials {
-            refresh_token: row.refresh_token,
-        }))
+        Ok(result.map(|refresh_token| StoredCredentials { refresh_token }))
     }
 
     async fn save_for_user(&self, username: &str, creds: &StoredCredentials) -> std::io::Result<()> {
-        sqlx::query!(
+        sqlx::query(
             r#"
-            INSERT INTO user_credentials (user_id, username, refresh_token, expires_at)
-            VALUES (NULL, $1, $2, NULL)
+            INSERT INTO user_credentials (user_id, username, password_hash, refresh_token, expires_at)
+            VALUES (NULL, $1, '', $2, NULL)
             ON CONFLICT (username) DO UPDATE SET
                 refresh_token = EXCLUDED.refresh_token,
                 updated_at = NOW()
             "#,
-            username,
-            creds.refresh_token
         )
+        .bind(username)
+        .bind(&creds.refresh_token)
         .execute(&self.pool)
         .await
         .map_err(|e| std::io::Error::other(format!("Database error: {}", e)))?;

@@ -66,5 +66,8 @@ fi
 
 cd /mnt/volume3/data/repos/github.com/oliveagle/vibe-kanban
 
+# Use SQLx offline mode to avoid database connection at compile time
+export SQLX_OFFLINE=true
+
 echo "Starting VK backend server..."
 exec cargo run --release --bin server

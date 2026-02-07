@@ -19,9 +19,11 @@ export function useProjects(): UseProjectsResult {
 
   const initialData = useCallback((): ProjectsState => ({ projects: {} }), []);
 
+  // Only enable WebSocket when authenticated (has token)
+  const token = localStorage.getItem('access_token');
   const { data, isConnected, error } = useJsonPatchWsStream<ProjectsState>(
     endpoint,
-    true,
+    !!token,
     initialData
   );
 

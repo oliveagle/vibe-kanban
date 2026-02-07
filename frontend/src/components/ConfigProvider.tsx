@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useState,
 } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -65,16 +66,37 @@ interface UserSystemProviderProps {
 export function UserSystemProvider({ children }: UserSystemProviderProps) {
   const queryClient = useQueryClient();
 
-  const { data: userSystemInfo, isLoading } = useQuery({
+  // Only fetch user system info when authenticated (has token)
+  const [token, setToken] = useState(localStorage.getItem('access_token'));
+  
+  // Listen for storage changes to detect login/logout
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setToken(localStorage.getItem('access_token'));
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+  
+  const { data: userSystemInfo, isPending } = useQuery({
     queryKey: ['user-system'],
     queryFn: configApi.getConfig,
     staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: !!token, // Only run when authenticated
   });
+  
+  // Only show loading when authenticated and actually loading
+  const isLoading = !!token && isPending;
 
   const config = userSystemInfo?.config || null;
   const environment = userSystemInfo?.environment || null;
   const analyticsUserId = userSystemInfo?.analytics_user_id || null;
-  const loginStatus = userSystemInfo?.login_status || null;
+  // When no token (unauthenticated), return a default logged-out status
+  // instead of null to prevent loading states from waiting forever
+  const loginStatus: LoginStatus = userSystemInfo?.login_status || (
+    !token ? { status: 'loggedout' } as LoginStatus : null
+  ) as LoginStatus;
   const profiles =
     (userSystemInfo?.executors as Record<string, ExecutorConfig> | null) ||
     null;

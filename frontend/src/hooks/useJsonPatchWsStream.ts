@@ -99,7 +99,10 @@ export const useJsonPatchWsStream = <T extends object>(
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         // Use window.location.host when BACKEND_URL is empty (same-origin deployment)
         const host = BACKEND_URL ? BACKEND_URL.replace(/^https?:\/\//, '') : window.location.host;
-        wsEndpoint = `${protocol}//${host}${endpoint}`;
+        // Add token to URL for authentication
+        const token = localStorage.getItem('access_token');
+        const separator = endpoint.includes('?') ? '&' : '?';
+        wsEndpoint = `${protocol}//${host}${endpoint}${separator}token=${token || ''}`;
       } else if (endpoint.startsWith('http')) {
         // HTTP(S) URL - convert to WS(S)
         wsEndpoint = endpoint.replace(/^http/, 'ws');
@@ -168,6 +171,15 @@ export const useJsonPatchWsStream = <T extends object>(
 
         // Do not reconnect if we received a finished message or clean close
         if (finishedRef.current || (evt?.code === 1000 && evt?.wasClean)) {
+          return;
+        }
+
+        // Check if token is missing (401/unauthorized scenario)
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+          if (window.location.pathname !== '/login' && window.location.pathname !== '/') {
+            window.location.href = '/login';
+          }
           return;
         }
 

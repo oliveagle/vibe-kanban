@@ -95,6 +95,19 @@ import {
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { createWorkspaceWithSession } from '@/types/attempt';
 
+// Helper function to handle 401 unauthorized errors
+const handleUnauthorized = () => {
+  // Check if already on login page to avoid redirect loop
+  if (window.location.pathname === '/login' || window.location.pathname === '/') {
+    return;
+  }
+  // Clear the token and redirect to login
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('last_project_id');
+  // Redirect to login page
+  window.location.href = '/login';
+};
+
 export class ApiError<E = unknown> extends Error {
   public status?: number;
   public error_data?: E;
@@ -206,6 +219,11 @@ export const handleApiResponse = async <T, E = T>(
       endpoint: response.url,
       timestamp: new Date().toISOString(),
     });
+    // Handle 401 unauthorized by redirecting to login
+    if (response.status === 401) {
+      handleUnauthorized();
+      return undefined as T;
+    }
     throw new ApiError<E>(errorMessage, response.status, response);
   }
 
@@ -226,6 +244,11 @@ export const handleApiResponse = async <T, E = T>(
         endpoint: response.url,
         timestamp: new Date().toISOString(),
       });
+      // Handle 401 unauthorized by redirecting to login
+      if (response.status === 401) {
+        handleUnauthorized();
+        return undefined as T;
+      }
       // Throw a properly typed error with the error data
       throw new ApiError<E>(
         result.message || 'API request failed',
@@ -242,6 +265,11 @@ export const handleApiResponse = async <T, E = T>(
       endpoint: response.url,
       timestamp: new Date().toISOString(),
     });
+    // Handle 401 unauthorized by redirecting to login
+    if (response.status === 401) {
+      handleUnauthorized();
+      return undefined as T;
+    }
     throw new ApiError<E>(
       result.message || 'API request failed',
       response.status,

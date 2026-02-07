@@ -1,0 +1,33 @@
+# PostgreSQL for Vibe-Kanban Development
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vk-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vibekanban
+      POSTGRES_PASSWORD: vibekanban123
+      POSTGRES_DB: vibe_kanban
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5632:5432"
+    volumes:
+      - vk-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vibekanban -d vibe_kanban"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_connections=100"
+
+volumes:
+  vk-postgres-data:
+    driver: local

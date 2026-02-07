@@ -18,7 +18,7 @@ impl DBService {
     pub async fn new() -> Result<DBService, Error> {
         let database_url = env::var("DATABASE_URL")
             .unwrap_or_else(|_| {
-                "postgres://vibekanban:vibekanban123@10.126.126.5:5632/vibe_kanban".to_string()
+                "postgres://vibekanban:vibekanban@10.126.126.5:5433/vibekanban".to_string()
             });
         
         let pool = PgPoolOptions::new()
@@ -26,7 +26,7 @@ impl DBService {
             .connect(&database_url)
             .await?;
         
-        sqlx::migrate!("./migrations_postgres").run(&pool).await?;
+        sqlx::migrate!("./migrations").run(&pool).await?;
         Ok(DBService { pool })
     }
 
@@ -36,7 +36,7 @@ impl DBService {
             .connect(database_url)
             .await?;
         
-        sqlx::migrate!("./migrations_postgres").run(&pool).await?;
+        sqlx::migrate!("./migrations").run(&pool).await?;
         Ok(DBService { pool })
     }
 }

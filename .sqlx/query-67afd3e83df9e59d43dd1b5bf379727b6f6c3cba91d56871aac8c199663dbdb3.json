@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT w.id as \"workspace_id!: Uuid\",\n                      w.task_id as \"task_id!: Uuid\",\n                      t.project_id as \"project_id!: Uuid\"\n               FROM task_workspaces w\n               JOIN tasks t ON w.task_id = t.id\n               WHERE w.container_ref = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "workspace_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "task_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "project_id!: Uuid",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "67afd3e83df9e59d43dd1b5bf379727b6f6c3cba91d56871aac8c199663dbdb3"
+}

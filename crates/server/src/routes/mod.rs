@@ -32,8 +32,16 @@ pub mod task_attempts;
 pub mod tasks;
 
 pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
-    // Create routers with different middleware layers
-    let base_routes = Router::new()
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    // OAuth routes - no auth required
+    let oauth_routes = oauth::router().with_state(deployment.clone());
+
+    // Protected routes - auth required
+    let protected_routes = Router::new()
         .route("/health", get(health::health_check))
         .merge(config::router())
         .merge(containers::router(&deployment))
@@ -44,7 +52,6 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(task_attempts::router(&deployment))
         .merge(execution_processes::router(&deployment))
         .merge(tags::router(&deployment))
-        .merge(oauth::router())
         .merge(organizations::router())
         .merge(filesystem::router())
         .merge(repo::router())
@@ -54,28 +61,19 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(sessions::router(&deployment))
         .merge(debug::router())
         .nest("/images", images::routes())
-        .with_state(deployment);
+        .with_state(deployment.clone())
+        .layer(from_fn_with_state(
+            deployment.clone(),
+            crate::middleware::auth_middleware,
+        ));
 
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
-
-    // Apply auth middleware to all API routes except health check and auth routes
-    let protected_api_routes = base_routes.layer(from_fn_with_state(
-        deployment.clone(),
-        crate::middleware::auth_middleware,
-    ));
-
-    // Apply auth middleware to all API routes (except health check)
-    let protected_api_routes = base_routes.layer(from_fn_with_state(
-        deployment.clone(),
-        crate::middleware::auth_middleware,
-    ));
+    let api_routes = Router::new()
+        .merge(oauth_routes)
+        .merge(protected_routes);
 
     Router::new()
         .route("/", get(frontend::serve_frontend_root))
-        .nest("/api", protected_api_routes)
+        .nest("/api", api_routes)
         .route("/assets/{*path}", get(frontend::serve_frontend_assets))
         .fallback(get(frontend::serve_frontend_fallback))
         .layer(cors)

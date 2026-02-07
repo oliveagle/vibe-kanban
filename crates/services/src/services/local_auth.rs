@@ -85,14 +85,17 @@ impl LocalAuthService {
 
     /// Initialize the database table and create default user if needed
     pub async fn initialize(&self) -> Result<(), LocalAuthError> {
-        // Create users table
+        // Table is created by migration, just ensure it exists
+        // Create users table (PostgreSQL compatible)
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS local_users (
-                id TEXT PRIMARY KEY,
+                id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
                 username TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                display_name TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
             )
             "#
         )
@@ -142,7 +145,7 @@ impl LocalAuthService {
         let password_hash = hash(password.as_bytes(), DEFAULT_COST)?;
 
         // Create user
-        let id = Uuid::new_v4().to_string();
+        let id = Uuid::new_v4();
         let created_at = Utc::now();
 
         sqlx::query(
@@ -156,7 +159,7 @@ impl LocalAuthService {
         .await?;
 
         Ok(LocalUser {
-            id,
+            id: id.to_string(),
             username: username.to_string(),
             password_hash,
             created_at,
@@ -179,7 +182,8 @@ impl LocalAuthService {
 
         let row = row.ok_or(LocalAuthError::InvalidCredentials)?;
 
-        let id: String = row.try_get("id")?;
+        let id: uuid::Uuid = row.try_get("id")?;
+        let id = id.to_string();
         let username: String = row.try_get("username")?;
         let password_hash: String = row.try_get("password_hash")?;
 

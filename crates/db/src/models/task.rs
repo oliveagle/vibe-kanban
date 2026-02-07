@@ -183,7 +183,7 @@ impl Task {
 
   CASE WHEN EXISTS (
     SELECT 1
-      FROM workspaces w
+      FROM task_workspaces w
       JOIN sessions s ON s.workspace_id = w.id
       JOIN execution_processes ep ON ep.session_id = s.id
      WHERE w.task_id       = t.id
@@ -194,7 +194,7 @@ impl Task {
 
   CASE WHEN (
     SELECT ep.status
-      FROM workspaces w
+      FROM task_workspaces w
       JOIN sessions s ON s.workspace_id = w.id
       JOIN execution_processes ep ON ep.session_id = s.id
      WHERE w.task_id       = t.id
@@ -205,7 +205,7 @@ impl Task {
                                  AS "last_attempt_failed!: i64",
 
   ( SELECT s.executor
-      FROM workspaces w
+      FROM task_workspaces w
       JOIN sessions s ON s.workspace_id = w.id
       WHERE w.task_id = t.id
      ORDER BY s.created_at DESC
@@ -562,7 +562,7 @@ ORDER BY t.created_at DESC"#,
                 r#"SELECT EXISTS(
                     SELECT 1
                     FROM tasks t
-                    JOIN workspaces w ON w.task_id = t.id
+                    JOIN task_workspaces w ON w.task_id = t.id
                     JOIN sessions s ON s.workspace_id = w.id
                     JOIN execution_processes ep ON ep.session_id = s.id
                     WHERE ep.status = 'running'

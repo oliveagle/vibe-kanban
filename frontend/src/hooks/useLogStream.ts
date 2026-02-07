@@ -81,6 +81,15 @@ export const useLogStream = (processId: string): UseLogStreamResult => {
       };
 
       ws.onclose = (event) => {
+        // Check if token is missing (401/unauthorized scenario)
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+          if (window.location.pathname !== '/login' && window.location.pathname !== '/') {
+            window.location.href = '/login';
+          }
+          return;
+        }
+
         // Only retry if the close was not intentional and not a normal closure
         if (!isIntentionallyClosed.current && event.code !== 1000) {
           const next = retryCountRef.current + 1;

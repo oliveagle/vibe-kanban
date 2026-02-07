@@ -33,7 +33,7 @@ if [ "$DAEMON_MODE" = true ]; then
         -e HOST=0.0.0.0 \
         -e PORT=3000 \
         -e VIBE_BACKEND_URL="http://localhost:${PORT}" \
-        -e DATABASE_URL="postgres://vibekanban:vibekanban123@10.126.126.5:5632/vibe_kanban" \
+        -e DATABASE_URL="postgres://postgres:postgres@host.containers.internal:5632/vk_db" \
         -e RUST_LOG=debug \
         -e DISABLE_WORKTREE_ORPHAN_CLEANUP=1 \
         -v /mnt/volume3/data:/mnt/volume3/data:rw \
@@ -56,7 +56,7 @@ else
         -e HOST=0.0.0.0 \
         -e PORT=3000 \
         -e VIBE_BACKEND_URL="http://localhost:${PORT}" \
-        -e DATABASE_URL="postgres://vibekanban:vibekanban123@10.126.126.5:5632/vibe_kanban" \
+        -e DATABASE_URL="postgres://postgres:postgres@host.containers.internal:5632/vk_db" \
         -e RUST_LOG=debug \
         -e DISABLE_WORKTREE_ORPHAN_CLEANUP=1 \
         -v /mnt/volume3/data:/mnt/volume3/data:rw \

@@ -98,12 +98,12 @@ impl Workspace {
         Task::find_by_id(pool, self.task_id).await
     }
 
-    /// Fetch all workspaces, optionally filtered by task_id. Newest first.
+    /// Fetch all task_workspaces, optionally filtered by task_id. Newest first.
     pub async fn fetch_all(
         pool: &PgPool,
         task_id: Option<Uuid>,
     ) -> Result<Vec<Self>, WorkspaceError> {
-        let workspaces = match task_id {
+        let task_workspaces = match task_id {
             Some(tid) => sqlx::query_as!(
                 Workspace,
                 r#"SELECT id AS "id!: Uuid",
@@ -114,7 +114,7 @@ impl Workspace {
                               setup_completed_at AS "setup_completed_at: DateTime<Utc>",
                               created_at AS "created_at!: DateTime<Utc>",
                               updated_at AS "updated_at!: DateTime<Utc>"
-                       FROM workspaces
+                       FROM task_workspaces
                        WHERE task_id = $1
                        ORDER BY created_at DESC"#,
                 tid
@@ -132,7 +132,7 @@ impl Workspace {
                               setup_completed_at AS "setup_completed_at: DateTime<Utc>",
                               created_at AS "created_at!: DateTime<Utc>",
                               updated_at AS "updated_at!: DateTime<Utc>"
-                       FROM workspaces
+                       FROM task_workspaces
                        ORDER BY created_at DESC"#
             )
             .fetch_all(pool)
@@ -140,10 +140,10 @@ impl Workspace {
             .map_err(WorkspaceError::Database)?,
         };
 
-        Ok(workspaces)
+        Ok(task_workspaces)
     }
 
-    /// Fetch all workspaces for multiple task IDs
+    /// Fetch all task_workspaces for multiple task IDs
     pub async fn fetch_all_bulk(
         pool: &PgPool,
         task_ids: &[Uuid],
@@ -152,7 +152,7 @@ impl Workspace {
             return Ok(Vec::new());
         }
 
-        let workspaces = sqlx::query_as!(
+        let task_workspaces = sqlx::query_as!(
             Workspace,
             r#"SELECT id AS "id!: Uuid",
                       task_id AS "task_id!: Uuid",
@@ -162,7 +162,7 @@ impl Workspace {
                       setup_completed_at AS "setup_completed_at: DateTime<Utc>",
                       created_at AS "created_at!: DateTime<Utc>",
                       updated_at AS "updated_at!: DateTime<Utc>"
-               FROM workspaces
+               FROM task_workspaces
                WHERE task_id = ANY($1)
                ORDER BY created_at DESC"#,
             task_ids
@@ -171,7 +171,7 @@ impl Workspace {
         .await
         .map_err(WorkspaceError::Database)?;
 
-        Ok(workspaces)
+        Ok(task_workspaces)
     }
 
     /// Load workspace with full validation - ensures workspace belongs to task and task belongs to project
@@ -191,7 +191,7 @@ impl Workspace {
                        w.setup_completed_at AS "setup_completed_at: DateTime<Utc>",
                        w.created_at        AS "created_at!: DateTime<Utc>",
                        w.updated_at        AS "updated_at!: DateTime<Utc>"
-               FROM    workspaces w
+               FROM    task_workspaces w
                 JOIN    tasks t ON w.task_id = t.id
                 JOIN    projects p ON t.project_id = p.id
                WHERE   w.id = $1 AND t.id = $2 AND p.id = $3"#,
@@ -231,7 +231,7 @@ impl Workspace {
     ) -> Result<(), sqlx::Error> {
         let now = Utc::now();
         sqlx::query!(
-            "UPDATE workspaces SET container_ref = $1, updated_at = $2 WHERE id = $3",
+            "UPDATE task_workspaces SET container_ref = $1, updated_at = $2 WHERE id = $3",
             container_ref,
             now,
             workspace_id
@@ -246,7 +246,7 @@ impl Workspace {
         workspace_id: Uuid,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            "UPDATE workspaces SET container_ref = NULL, updated_at = NOW() WHERE id = $1",
+            "UPDATE task_workspaces SET container_ref = NULL, updated_at = NOW() WHERE id = $1",
             workspace_id
         )
         .execute(pool)
@@ -258,7 +258,7 @@ impl Workspace {
     /// Call this when the workspace is accessed (e.g., opened in editor).
     pub async fn touch(pool: &PgPool, workspace_id: Uuid) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            "UPDATE workspaces SET updated_at = NOW() WHERE id = $1",
+            "UPDATE task_workspaces SET updated_at = NOW() WHERE id = $1",
             workspace_id
         )
         .execute(pool)
@@ -277,7 +277,7 @@ impl Workspace {
                        setup_completed_at AS "setup_completed_at: DateTime<Utc>",
                        created_at        AS "created_at!: DateTime<Utc>",
                        updated_at        AS "updated_at!: DateTime<Utc>"
-               FROM    workspaces
+               FROM    task_workspaces
                WHERE   id = $1"#,
             id
         )
@@ -295,7 +295,7 @@ impl Workspace {
         container_ref: &str,
     ) -> Result<bool, sqlx::Error> {
         let result = sqlx::query!(
-            r#"SELECT EXISTS(SELECT 1 FROM workspaces WHERE container_ref = $1) as "exists!: bool""#,
+            r#"SELECT EXISTS(SELECT 1 FROM task_workspaces WHERE container_ref = $1) as "exists!: bool""#,
             container_ref
         )
         .fetch_one(pool)
@@ -304,7 +304,7 @@ impl Workspace {
         Ok(result.exists)
     }
 
-    /// Find workspaces that are expired (72+ hours since last activity) and eligible for cleanup
+    /// Find task_workspaces that are expired (72+ hours since last activity) and eligible for cleanup
     pub async fn find_expired_for_cleanup(
         pool: &PgPool,
     ) -> Result<Vec<Workspace>, sqlx::Error> {
@@ -320,7 +320,7 @@ impl Workspace {
                 w.setup_completed_at as "setup_completed_at: DateTime<Utc>",
                 w.created_at as "created_at!: DateTime<Utc>",
                 w.updated_at as "updated_at!: DateTime<Utc>"
-            FROM workspaces w
+            FROM task_workspaces w
             LEFT JOIN sessions s ON w.id = s.workspace_id
             LEFT JOIN execution_processes ep ON s.id = ep.session_id AND ep.completed_at IS NOT NULL
             WHERE w.container_ref IS NOT NULL
@@ -357,7 +357,7 @@ impl Workspace {
     ) -> Result<Self, WorkspaceError> {
         Ok(sqlx::query_as!(
             Workspace,
-            r#"INSERT INTO workspaces (id, task_id, container_ref, branch, agent_working_dir, setup_completed_at)
+            r#"INSERT INTO task_workspaces (id, task_id, container_ref, branch, agent_working_dir, setup_completed_at)
                VALUES ($1, $2, $3, $4, $5, $6)
                RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, agent_working_dir, setup_completed_at as "setup_completed_at: DateTime<Utc>", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             id,
@@ -377,7 +377,7 @@ impl Workspace {
         new_branch_name: &str,
     ) -> Result<(), WorkspaceError> {
         sqlx::query!(
-            "UPDATE workspaces SET branch = $1, updated_at = NOW() WHERE id = $2",
+            "UPDATE task_workspaces SET branch = $1, updated_at = NOW() WHERE id = $2",
             new_branch_name,
             workspace_id
         )
@@ -395,7 +395,7 @@ impl Workspace {
             r#"SELECT w.id as "workspace_id!: Uuid",
                       w.task_id as "task_id!: Uuid",
                       t.project_id as "project_id!: Uuid"
-               FROM workspaces w
+               FROM task_workspaces w
                JOIN tasks t ON w.task_id = t.id
                WHERE w.container_ref = $1"#,
             container_ref

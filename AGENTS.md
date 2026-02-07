@@ -301,10 +301,17 @@ All configuration is organized under `$HOME/.local/share/vibe-kanban/`:
 
 ```
 $HOME/.local/share/vibe-kanban/
-├── db.sqlite                    # VK database
 ├── config.json                  # VK configuration
 ├── credentials.json             # VK credentials
 ├── opencode.json                # MCP configuration for opencode
+│
+## Database
+#
+# VK uses PostgreSQL as the primary database.
+# For development, a PostgreSQL container is automatically managed by the just dev-srv command.
+#
+# To use an external PostgreSQL database, set the DATABASE_URL environment variable:
+#   export DATABASE_URL="postgres://user:password@host:port/database_name"
 │
 ├── agents/                      # Agent-specific configurations
 │   └── opencode/                # Opencode configuration
@@ -382,7 +389,11 @@ To use these defaults, ensure:
 
 ### Backend Debug Log API
 
-When debugging frontend issues (especially WebSocket connections, real-time updates, or UI state problems), use the backend debug log API to send logs from the frontend to the backend logs.
+**All critical frontend logs should be sent to the backend via the debug log API.** This allows debugging frontend issues by examining backend logs, especially for:
+- WebSocket connections and real-time updates
+- Authentication state and token management
+- UI loading states and errors
+- API request/response issues
 
 **API Endpoint:** `POST /api/debug/log`
 
@@ -409,21 +420,172 @@ fetch('/api/debug/log', {
 });
 ```
 
-**When to use:**
-- WebSocket connection errors
-- Real-time update failures
-- UI state synchronization issues
-- Any frontend error that needs backend context
+**Critical events to log:**
+- Authentication state changes (login, logout, token refresh)
+- WebSocket connection status (connecting, connected, disconnected, errors)
+- Loading state transitions (especially stuck loading states)
+- API errors with status codes and error messages
+- Router/navigation events
+- Token availability and validation
 
-**Viewing logs:**
+**Debug workflow:**
+1. Add debug logs to frontend code for the issue being investigated
+2. Rebuild frontend (`pnpm run build` in `frontend/` directory)
+3. View backend logs to see frontend events:
 ```bash
-# View backend logs in real-time
 just dev-srv-logs
 # or
-podman logs -f vibe-kanban-backend-dev
+podman logs -f vibe-kanban-backend-dev | grep -E "(FRONTEND|error|Error)"
 ```
 
 Look for `[FRONTEND]` prefix in the logs to identify frontend-generated log entries.
+
+## DDD Database Architecture
+
+### Aggregate Root Design
+
+数据库采用 **DDD (Domain-Driven Design)** 模式，使用 **聚合根 (Aggregate Root)** 作为数据存储的核心单元。
+
+#### 核心原则
+
+1. **每个聚合根只有 5 个标准字段**:
+   - `id`: UUID PRIMARY KEY
+   - `name`: TEXT (聚合根的名称/标题)
+   - `status`: TEXT (状态: active, inactive, deleted 等)
+   - `data`: JSONB (所有领域数据)
+   - `created_at/updated_at/deleted_at`: 时间戳
+
+2. **所有领域数据存储在 `data` JSONB 字段**:
+   - 不需要单独的表或外键
+   - 使用 PostgreSQL 的 JSONB 索引支持查询
+   - 领域模型直接序列化为 JSON
+
+3. **软删除机制**:
+   - 使用 `deleted_at` 字段
+   - 配合 Partial Index 排除已删除数据
+   - 创建视图 `active_*` 方便查询
+
+#### 聚合根列表
+
+| 聚合根 | 用途 | data 字段包含 |
+|--------|------|---------------|
+| `users` | 用户管理 | profile, credentials, preferences, sessions |
+| `projects` | 项目管理 | config, repos, settings, stats, members |
+| `tasks` | 任务管理 | title, description, workspaces, assignee, priority, subtasks |
+| `execution_processes` | 执行流程 | session, workspace, logs, repo_states, metrics |
+
+#### 示例表结构
+
+```sql
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,                    -- 用户名
+    status TEXT NOT NULL DEFAULT 'active', -- active, inactive, deleted
+    data JSONB NOT NULL DEFAULT '{}',      -- 所有用户数据
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ                 -- 软删除标记
+);
+
+-- data JSONB 示例结构:
+-- {
+--   "profile": {
+--     "email": "admin@local",
+--     "avatar": "...",
+--     "display_name": "Admin User"
+--   },
+--   "credentials": {
+--     "password_hash": "$2b$12$...",
+--     "refresh_token": "...",
+--     "mfa_enabled": false
+--   },
+--   "preferences": {
+--     "theme": "dark",
+--     "language": "zh-CN",
+--     "notifications": true
+--   },
+--   "sessions": [
+--     {"id": "...", "device": "Chrome/Windows", "last_active": "..."}
+--   ]
+-- }
+
+-- 索引
+CREATE INDEX idx_users_name ON users(name);
+CREATE INDEX idx_users_status ON users(status);
+CREATE INDEX idx_users_not_deleted ON users(id) WHERE deleted_at IS NULL;
+
+-- JSONB 查询索引示例
+CREATE INDEX idx_users_email ON users((data->'profile'->>'email'));
+CREATE INDEX idx_users_data ON users USING GIN(data);
+
+-- 方便查询的视图
+CREATE OR REPLACE VIEW active_users AS 
+SELECT * FROM users WHERE deleted_at IS NULL;
+```
+
+#### 编码规范
+
+1. **永远不要创建新的表** - 所有数据都应该存储在现有聚合根的 `data` 字段中
+
+2. **查询使用 PostgreSQL JSONB 操作符**:
+   ```sql
+   -- 查询 email
+   SELECT * FROM users WHERE data->'profile'->>'email' = 'admin@local';
+   
+   -- 查询嵌套数组
+   SELECT * FROM tasks WHERE data->'workspaces' @> '[{"status": "running"}]'::jsonb;
+   
+   -- 使用 GIN 索引的查询
+   SELECT * FROM users WHERE data @> '{"preferences": {"theme": "dark"}}'::jsonb;
+   ```
+
+3. **批量更新使用 jsonb_set/jsonb_insert**:
+   ```sql
+   -- 更新单个字段
+   UPDATE users SET data = jsonb_set(data, '{profile,display_name}', '"New Name"');
+   
+   -- 添加数组元素
+   UPDATE tasks SET data = jsonb_insert(data, '{workspaces,0}', '{"id": "..."}'::jsonb);
+   ```
+
+4. **代码中的数据访问**:
+   ```rust
+   // 序列化/反序列化
+   let user_data: UserData = serde_json::from_value(row.data.clone())?;
+   
+   // 查询构建
+   let user = sqlx::query_as::<_, User>(
+       r#"SELECT * FROM users 
+          WHERE data->'profile'->>'email' = $1 
+          AND deleted_at IS NULL"#
+   )
+   .bind(email)
+   .fetch_one(&pool)
+   .await?;
+   ```
+
+### 总结
+
+采用 DDD + JSONB 架构后，整个系统的数据模型大大简化：
+
+- **从 30+ 个表缩减到 5 个聚合根表**
+- **无需 migration，直接修改 JSON 结构**
+- **代码直接操作领域对象，无需 ORM 映射**
+- **PostgreSQL 的 JSONB 索引保证查询性能**
+
+这是从 **关系型数据库思维** 到 **领域驱动设计** 的根本转变。
+
+### Browser-Based Debugging (dev-browser Skill)
+- Checking console errors in real browser environment
+
+**When to use:**
+- After making frontend changes to verify the fix visually
+- When users report UI issues that are hard to reproduce
+- Before committing frontend changes to ensure no regressions
+- To capture evidence of bugs for issue reports
+
+**How to use:**
+Refer to the `dev-browser` skill documentation for detailed usage instructions on taking screenshots, capturing console logs, and testing interactive UI elements.
 
 ## Optional Features Configuration
 
@@ -801,7 +963,7 @@ podman run -d \
   sh -c "sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
          sed -i 's/security.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
          apt-get update && \
-         apt-get install -y cargo pkg-config libssl-dev libsqlite3-dev libclang-dev clang && \
+         apt-get install -y cargo pkg-config libssl-dev libclang-dev clang && \
          cargo install cargo-watch && \
          cargo watch -w crates -x 'run --bin server'"
 ```
