@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{FromRow, PgPool};
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
@@ -10,6 +10,28 @@ use super::{
     task::Task,
     workspace_repo::RepoWithTargetBranch,
 };
+
+/// Workspace data stored in JSONB
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct WorkspaceData {
+    pub container_ref: Option<String>,
+    pub branch: Option<String>,
+    pub agent_working_dir: Option<String>,
+    #[ts(type = "Date | null")]
+    pub setup_completed_at: Option<DateTime<Utc>>,
+}
+
+impl Default for WorkspaceData {
+    fn default() -> Self {
+        Self {
+            container_ref: None,
+            branch: None,
+            agent_working_dir: None,
+            setup_completed_at: None,
+        }
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum WorkspaceError {
@@ -44,33 +66,15 @@ pub enum WorkspaceStatus {
     ExecutorFailed,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct Workspace {
     pub id: Uuid,
     pub task_id: Uuid,
-    pub name: Option<String>,
     pub status: String,
-    pub data: WorkspaceData,
+    pub data: sqlx::types::Json<WorkspaceData>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct WorkspaceData {
-    pub container_ref: Option<String>,
-    pub branch: Option<String>,
-    pub agent_working_dir: Option<String>,
-    pub setup_completed_at: Option<DateTime<Utc>>,
-    pub repos: Vec<WorkspaceRepoData>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct WorkspaceRepoData {
-    pub repo_id: Uuid,
-    pub name: String,
-    pub path: Option<String>,
-    pub target_branch: String,
 }
 
 /// GitHub PR creation parameters
@@ -79,29 +83,17 @@ pub struct CreatePrParams<'a> {
     pub task_id: Uuid,
     pub project_id: Uuid,
     pub github_token: &'a str,
+    pub repo_owner: &'a str,
+    pub repo_name: &'a str,
+    pub base_branch: &'a str,
+    pub head_branch: &'a str,
     pub title: &'a str,
-    pub body: Option<&'a str>,
-    pub base_branch: Option<&'a str>,
+    pub body: &'a str,
 }
 
-#[derive(Debug, Deserialize, TS)]
-pub struct CreateFollowUpAttempt {
-    pub prompt: String,
-}
-
-/// Context data for resume operations (simplified)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AttemptResumeContext {
-    pub execution_history: String,
-    pub cumulative_diffs: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceContext {
     pub workspace: Workspace,
-    pub task: Task,
-    pub project: Project,
-    pub workspace_repos: Vec<RepoWithTargetBranch>,
+    pub repos: Vec<super::workspace_repo::WorkspaceRepo>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -111,59 +103,51 @@ pub struct CreateWorkspace {
 }
 
 impl Workspace {
-    pub async fn parent_task(&self, pool: &PgPool) -> Result<Option<Task>, sqlx::Error> {
-        Task::find_by_id(pool, self.task_id).await
-    }
-
-    /// Fetch all task_workspaces, optionally filtered by task_id. Newest first.
+    /// Fetch all workspaces, optionally filtered by task_id. Newest first.
     pub async fn fetch_all(
         pool: &PgPool,
         task_id: Option<Uuid>,
     ) -> Result<Vec<Self>, WorkspaceError> {
-        let rows = match task_id {
-            Some(tid) => sqlx::query!(
-                r#"SELECT id, task_id, name, status, data, created_at, updated_at, deleted_at
-                   FROM task_workspaces
-                   WHERE task_id = $1 AND deleted_at IS NULL
-                   ORDER BY created_at DESC"#,
+        let workspaces = match task_id {
+            Some(tid) => sqlx::query_as!(
+                Workspace,
+                r#"SELECT id AS "id!: Uuid",
+                              task_id AS "task_id!: Uuid",
+                              status,
+                              data AS "data!: sqlx::types::Json<WorkspaceData>",
+                              created_at AS "created_at!: DateTime<Utc>",
+                              updated_at AS "updated_at!: DateTime<Utc>",
+                              deleted_at AS "deleted_at!: Option<DateTime<Utc>>"
+                       FROM workspaces
+                       WHERE task_id = $1 AND deleted_at IS NULL
+                       ORDER BY created_at DESC"#,
                 tid
             )
             .fetch_all(pool)
             .await
             .map_err(WorkspaceError::Database)?,
-            None => sqlx::query!(
-                r#"SELECT id, task_id, name, status, data, created_at, updated_at, deleted_at
-                   FROM task_workspaces
-                   WHERE deleted_at IS NULL
-                   ORDER BY created_at DESC"#
+            None => sqlx::query_as!(
+                Workspace,
+                r#"SELECT id AS "id!: Uuid",
+                              task_id AS "task_id!: Uuid",
+                              status,
+                              data AS "data!: sqlx::types::Json<WorkspaceData>",
+                              created_at AS "created_at!: DateTime<Utc>",
+                              updated_at AS "updated_at!: DateTime<Utc>",
+                              deleted_at AS "deleted_at!: Option<DateTime<Utc>>"
+                       FROM workspaces
+                       WHERE deleted_at IS NULL
+                       ORDER BY created_at DESC"#
             )
             .fetch_all(pool)
             .await
             .map_err(WorkspaceError::Database)?,
         };
 
-        let workspaces: Result<Vec<Self>, _> = rows
-            .into_iter()
-            .map(|row| {
-                let data: WorkspaceData = serde_json::from_value(row.data)
-                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
-                Ok(Workspace {
-                    id: row.id,
-                    task_id: row.task_id,
-                    name: row.name,
-                    status: row.status,
-                    data,
-                    created_at: row.created_at,
-                    updated_at: row.updated_at,
-                    deleted_at: row.deleted_at,
-                })
-            })
-            .collect();
-
-        workspaces.map_err(WorkspaceError::Database)
+        Ok(workspaces)
     }
 
-    /// Fetch all task_workspaces for multiple task IDs
+    /// Fetch all workspaces for a list of task IDs
     pub async fn fetch_all_bulk(
         pool: &PgPool,
         task_ids: &[Uuid],
@@ -172,123 +156,75 @@ impl Workspace {
             return Ok(Vec::new());
         }
 
-        let rows = sqlx::query!(
-            r#"SELECT id, task_id, name, status, data, created_at, updated_at, deleted_at
-               FROM task_workspaces
-               WHERE task_id = ANY($1) AND deleted_at IS NULL
-               ORDER BY created_at DESC"#,
+        let workspaces = sqlx::query_as!(
+            Workspace,
+            r#"SELECT id AS "id!: Uuid",
+                          task_id AS "task_id!: Uuid",
+                          status,
+                          data AS "data!: sqlx::types::Json<WorkspaceData>",
+                          created_at AS "created_at!: DateTime<Utc>",
+                          updated_at AS "updated_at!: DateTime<Utc>",
+                          deleted_at AS "deleted_at!: Option<DateTime<Utc>>"
+                   FROM workspaces
+                   WHERE task_id = ANY($1) AND deleted_at IS NULL
+                   ORDER BY created_at DESC"#,
             task_ids
         )
         .fetch_all(pool)
         .await
         .map_err(WorkspaceError::Database)?;
 
-        let workspaces: Result<Vec<Self>, _> = rows
-            .into_iter()
-            .map(|row| {
-                let data: WorkspaceData = serde_json::from_value(row.data)
-                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
-                Ok(Workspace {
-                    id: row.id,
-                    task_id: row.task_id,
-                    name: row.name,
-                    status: row.status,
-                    data,
-                    created_at: row.created_at,
-                    updated_at: row.updated_at,
-                    deleted_at: row.deleted_at,
-                })
-            })
-            .collect();
-
-        workspaces.map_err(WorkspaceError::Database)
+        Ok(workspaces)
     }
 
-    /// Load workspace with full validation - ensures workspace belongs to task and task belongs to project
+    /// Load the full context for a workspace
     pub async fn load_context(
         pool: &PgPool,
         workspace_id: Uuid,
         task_id: Uuid,
         project_id: Uuid,
     ) -> Result<WorkspaceContext, WorkspaceError> {
-        let row = sqlx::query!(
-            r#"SELECT w.id, w.task_id, w.name, w.status, w.data, w.created_at, w.updated_at, w.deleted_at
-               FROM task_workspaces w
-               JOIN tasks t ON w.task_id = t.id
-               JOIN projects p ON t.project_id = p.id
-               WHERE w.id = $1 AND t.id = $2 AND p.id = $3 AND w.deleted_at IS NULL"#,
+        let workspace = sqlx::query_as!(
+            Workspace,
+            r#"SELECT  w.id                AS "id!: Uuid",
+                        w.task_id           AS "task_id!: Uuid",
+                        w.status,
+                        w.data              AS "data!: sqlx::types::Json<WorkspaceData>",
+                        w.created_at        AS "created_at!: DateTime<Utc>",
+                        w.updated_at        AS "updated_at!: DateTime<Utc>",
+                        w.deleted_at        AS "deleted_at!: Option<DateTime<Utc>>"
+                 FROM workspaces w
+                 JOIN tasks t ON w.task_id = t.id
+                 JOIN projects p ON t.project_id = p.id
+                 WHERE w.id = $1 AND t.id = $2 AND p.id = $3 AND w.deleted_at IS NULL"#,
             workspace_id,
             task_id,
             project_id
         )
         .fetch_optional(pool)
-        .await?
+        .await
+        .map_err(WorkspaceError::Database)?
         .ok_or(WorkspaceError::TaskNotFound)?;
 
-        let data: WorkspaceData = serde_json::from_value(row.data)
-            .map_err(|e| WorkspaceError::Database(sqlx::Error::Decode(Box::new(e))))?;
-
-        let workspace = Workspace {
-            id: row.id,
-            task_id: row.task_id,
-            name: row.name,
-            status: row.status,
-            data,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-            deleted_at: row.deleted_at,
-        };
-
-        // Load task and project (we know they exist due to JOIN validation)
-        let task = Task::find_by_id(pool, task_id)
-            .await?
-            .ok_or(WorkspaceError::TaskNotFound)?;
-
-        let project = Project::find_by_id(pool, project_id)
-            .await?
-            .ok_or(WorkspaceError::ProjectNotFound)?;
-
-        // Convert workspace repos to RepoWithTargetBranch format
-        let workspace_repos: Vec<RepoWithTargetBranch> = workspace
-            .data
-            .repos
-            .iter()
-            .map(|r| RepoWithTargetBranch {
-                repo: super::repo::Repo {
-                    id: r.repo_id,
-                    path: r.path.clone(),
-                    name: r.name.clone(),
-                    display_name: None,
-                    created_at: workspace.created_at,
-                    updated_at: workspace.updated_at,
-                },
-                target_branch: r.target_branch.clone(),
-            })
-            .collect();
+        // Load associated repos
+        let repos = super::workspace_repo::WorkspaceRepo::find_by_workspace_id(pool, workspace_id)
+            .await
+            .map_err(WorkspaceError::Database)?;
 
         Ok(WorkspaceContext {
             workspace,
-            task,
-            project,
-            workspace_repos,
+            repos,
         })
     }
 
-    /// Update container reference
+    /// Update the container reference for a workspace
     pub async fn update_container_ref(
         pool: &PgPool,
         workspace_id: Uuid,
         container_ref: &str,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            r#"UPDATE task_workspaces 
-               SET data = jsonb_set(
-                   COALESCE(data, '{}'::jsonb),
-                   '{container_ref}',
-                   to_jsonb($1)
-               ),
-               updated_at = NOW()
-               WHERE id = $2"#,
+            "UPDATE workspaces SET data = jsonb_set(data, '{container_ref}', to_jsonb($1)), updated_at = NOW() WHERE id = $2",
             container_ref,
             workspace_id
         )
@@ -297,27 +233,13 @@ impl Workspace {
         Ok(())
     }
 
+    /// Clear the container reference for a workspace
     pub async fn clear_container_ref(
         pool: &PgPool,
         workspace_id: Uuid,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
-            r#"UPDATE task_workspaces 
-               SET data = data - 'container_ref',
-               updated_at = NOW()
-               WHERE id = $1"#,
-            workspace_id
-        )
-        .execute(pool)
-        .await?;
-        Ok(())
-    }
-
-    /// Update the workspace's updated_at timestamp to prevent cleanup.
-    /// Call this when the workspace is accessed (e.g., opened in editor).
-    pub async fn touch(pool: &PgPool, workspace_id: Uuid) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            "UPDATE task_workspaces SET updated_at = NOW() WHERE id = $1",
+            "UPDATE workspaces SET data = data - 'container_ref', updated_at = NOW() WHERE id = $1",
             workspace_id
         )
         .execute(pool)
@@ -326,37 +248,21 @@ impl Workspace {
     }
 
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
-        let row = sqlx::query!(
-            r#"SELECT id, task_id, name, status, data, created_at, updated_at, deleted_at
-               FROM task_workspaces
-               WHERE id = $1 AND deleted_at IS NULL"#,
+        sqlx::query_as!(
+            Workspace,
+            r#"SELECT  id                AS "id!: Uuid",
+                        task_id           AS "task_id!: Uuid",
+                        status,
+                        data              AS "data!: sqlx::types::Json<WorkspaceData>",
+                        created_at        AS "created_at!: DateTime<Utc>",
+                        updated_at        AS "updated_at!: DateTime<Utc>",
+                        deleted_at        AS "deleted_at!: Option<DateTime<Utc>>"
+                 FROM workspaces
+                 WHERE id = $1 AND deleted_at IS NULL"#,
             id
         )
         .fetch_optional(pool)
-        .await?;
-
-        match row {
-            Some(row) => {
-                let data: WorkspaceData = serde_json::from_value(row.data)
-                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
-                Ok(Some(Workspace {
-                    id: row.id,
-                    task_id: row.task_id,
-                    name: row.name,
-                    status: row.status,
-                    data,
-                    created_at: row.created_at,
-                    updated_at: row.updated_at,
-                    deleted_at: row.deleted_at,
-                }))
-            }
-            None => Ok(None),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub async fn find_by_ctid(_pool: &PgPool, _ctid: i64) -> Result<Option<Self>, sqlx::Error> {
-        Ok(None)
+        .await
     }
 
     pub async fn container_ref_exists(
@@ -364,11 +270,7 @@ impl Workspace {
         container_ref: &str,
     ) -> Result<bool, sqlx::Error> {
         let result = sqlx::query!(
-            r#"SELECT EXISTS(
-                SELECT 1 FROM task_workspaces 
-                WHERE data->>'container_ref' = $1 
-                AND deleted_at IS NULL
-            ) as "exists!: bool""#,
+            r#"SELECT EXISTS(SELECT 1 FROM workspaces WHERE data->>'container_ref' = $1 AND deleted_at IS NULL) as "exists!: bool""#,
             container_ref
         )
         .fetch_one(pool)
@@ -377,33 +279,31 @@ impl Workspace {
         Ok(result.exists)
     }
 
-    /// Find task_workspaces that are expired (72+ hours since last activity) and eligible for cleanup
+    /// Find workspaces that are expired and ready for cleanup
     pub async fn find_expired_for_cleanup(
         pool: &PgPool,
     ) -> Result<Vec<Workspace>, sqlx::Error> {
         let rows = sqlx::query!(
             r#"
             SELECT
-                w.id,
-                w.task_id,
-                w.name,
+                w.id                AS "id!: Uuid",
+                w.task_id           AS "task_id!: Uuid",
                 w.status,
-                w.data,
-                w.created_at,
-                w.updated_at,
-                w.deleted_at
-            FROM task_workspaces w
+                w.data              AS "data!: sqlx::types::Json<WorkspaceData>",
+                w.created_at        AS "created_at!: DateTime<Utc>",
+                w.updated_at        AS "updated_at!: DateTime<Utc>",
+                w.deleted_at        AS "deleted_at!: Option<DateTime<Utc>>"
+            FROM workspaces w
             LEFT JOIN sessions s ON w.id = s.workspace_id
-            LEFT JOIN execution_processes ep ON s.id = ep.session_id AND ep.data->>'completed_at' IS NOT NULL
-            WHERE w.data->>'container_ref' IS NOT NULL
-                AND w.deleted_at IS NULL
-                AND w.id NOT IN (
+            LEFT JOIN execution_processes ep ON s.id = ep.session_id
+            WHERE w.deleted_at IS NULL
+            AND w.id NOT IN (
                     SELECT DISTINCT s2.workspace_id
                     FROM sessions s2
                     JOIN execution_processes ep2 ON s2.id = ep2.session_id
                     WHERE ep2.data->>'completed_at' IS NULL
                 )
-            GROUP BY w.id, w.data, w.updated_at
+            GROUP BY w.id, w.updated_at
             HAVING NOW() - INTERVAL '72 hours' > MAX(
                     CASE
                         WHEN ep.data->>'completed_at' IS NOT NULL 
@@ -411,37 +311,13 @@ impl Workspace {
                         ELSE w.updated_at
                     END
                 )
-            ORDER BY MAX(
-                CASE
-                    WHEN ep.data->>'completed_at' IS NOT NULL 
-                    THEN (ep.data->>'completed_at')::timestamptz
-                    ELSE w.updated_at
-                END
-            ) ASC
+            ORDER BY w.updated_at ASC
             "#
         )
         .fetch_all(pool)
         .await?;
 
-        let workspaces: Result<Vec<Self>, _> = rows
-            .into_iter()
-            .map(|row| {
-                let data: WorkspaceData = serde_json::from_value(row.data)
-                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
-                Ok(Workspace {
-                    id: row.id,
-                    task_id: row.task_id,
-                    name: row.name,
-                    status: row.status,
-                    data,
-                    created_at: row.created_at,
-                    updated_at: row.updated_at,
-                    deleted_at: row.deleted_at,
-                })
-            })
-            .collect();
-
-        workspaces
+        Ok(rows)
     }
 
     pub async fn create(
@@ -450,42 +326,33 @@ impl Workspace {
         id: Uuid,
         task_id: Uuid,
     ) -> Result<Self, WorkspaceError> {
-        let data = WorkspaceData {
+        let workspace_data = WorkspaceData {
             container_ref: None,
             branch: Some(create_data.branch.clone()),
             agent_working_dir: create_data.agent_working_dir.clone(),
             setup_completed_at: None,
-            repos: Vec::new(),
         };
 
-        let data_json = serde_json::to_value(&data)
-            .map_err(|e| WorkspaceError::Database(sqlx::Error::Encode(Box::new(e))))?;
-
-        let row = sqlx::query!(
-            r#"INSERT INTO task_workspaces (id, task_id, name, status, data)
-               VALUES ($1, $2, $3, 'active', $4)
-               RETURNING id, task_id, name, status, data, created_at, updated_at, deleted_at"#,
+        let row = sqlx::query_as!(
+            Workspace,
+            r#"INSERT INTO workspaces (id, task_id, status, data)
+               VALUES ($1, $2, 'active', $3)
+               RETURNING id AS "id!: Uuid",
+                         task_id AS "task_id!: Uuid",
+                         status,
+                         data AS "data!: sqlx::types::Json<WorkspaceData>",
+                         created_at AS "created_at!: DateTime<Utc>",
+                         updated_at AS "updated_at!: DateTime<Utc>",
+                         deleted_at AS "deleted_at!: Option<DateTime<Utc>>""#,
             id,
             task_id,
-            None::<String>,
-            data_json
+            workspace_data
         )
         .fetch_one(pool)
-        .await?;
+        .await
+        .map_err(WorkspaceError::Database)?;
 
-        let returned_data: WorkspaceData = serde_json::from_value(row.data)
-            .map_err(|e| WorkspaceError::Database(sqlx::Error::Decode(Box::new(e))))?;
-
-        Ok(Workspace {
-            id: row.id,
-            task_id: row.task_id,
-            name: row.name,
-            status: row.status,
-            data: returned_data,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-            deleted_at: row.deleted_at,
-        })
+        Ok(row)
     }
 
     pub async fn update_branch_name(
@@ -494,19 +361,13 @@ impl Workspace {
         new_branch_name: &str,
     ) -> Result<(), WorkspaceError> {
         sqlx::query!(
-            r#"UPDATE task_workspaces 
-               SET data = jsonb_set(
-                   COALESCE(data, '{}'::jsonb),
-                   '{branch}',
-                   to_jsonb($1)
-               ),
-               updated_at = NOW()
-               WHERE id = $2"#,
+            "UPDATE workspaces SET data = jsonb_set(data, '{branch}', to_jsonb($1)), updated_at = NOW() WHERE id = $2",
             new_branch_name,
             workspace_id
         )
         .execute(pool)
-        .await?;
+        .await
+        .map_err(WorkspaceError::Database)?;
 
         Ok(())
     }
@@ -520,32 +381,31 @@ impl Workspace {
                 w.id as workspace_id,
                 w.task_id as task_id,
                 t.project_id as project_id
-               FROM task_workspaces w
+               FROM workspaces w
                JOIN tasks t ON w.task_id = t.id
                WHERE w.data->>'container_ref' = $1 
                AND w.deleted_at IS NULL"#,
             container_ref
         )
         .fetch_optional(pool)
-        .await?
-        .ok_or(sqlx::Error::RowNotFound)?;
+        .await?;
 
-        Ok(ContainerInfo {
-            workspace_id: result.workspace_id,
-            task_id: result.task_id,
-            project_id: result.project_id,
-        })
+        match result {
+            Some(r) => Ok(ContainerInfo {
+                workspace_id: r.workspace_id,
+                task_id: r.task_id,
+                project_id: r.project_id,
+            }),
+            None => Err(sqlx::Error::RowNotFound),
+        }
     }
 
-    /// Stub for PostgreSQL - rowid is SQLite-specific
-    /// In PostgreSQL, we use UUID primary keys
-    #[allow(dead_code)]
     pub async fn find_by_rowid(_pool: &PgPool, _rowid: i64) -> Result<Option<Self>, sqlx::Error> {
         // PostgreSQL doesn't have rowid, this is a stub for compatibility
         Ok(None)
     }
 
-    // Helper methods for backward compatibility
+    // Helper methods to access data fields
     pub fn container_ref(&self) -> Option<&String> {
         self.data.container_ref.as_ref()
     }
@@ -560,9 +420,5 @@ impl Workspace {
 
     pub fn setup_completed_at(&self) -> Option<DateTime<Utc>> {
         self.data.setup_completed_at
-    }
-
-    pub fn repos(&self) -> &[WorkspaceRepoData] {
-        &self.data.repos
     }
 }
