@@ -33,6 +33,8 @@ pub struct Task {
     pub shared_task_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(skip)]
+    pub data: sqlx::types::Json<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

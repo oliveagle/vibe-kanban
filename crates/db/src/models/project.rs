@@ -29,6 +29,8 @@ pub struct Project {
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
     pub updated_at: DateTime<Utc>,
+    #[serde(skip)]
+    pub data: sqlx::types::Json<Value>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
