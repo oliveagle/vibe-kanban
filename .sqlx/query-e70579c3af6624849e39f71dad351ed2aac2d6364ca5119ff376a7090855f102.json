@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            ep.id as \"id!: Uuid\",\n            ep.session_id as \"session_id!: Uuid\",\n            ep.run_reason as \"run_reason!: ExecutionProcessRunReason\",\n            ep.status as \"status!: ExecutionProcessStatus\",\n            ep.data as \"data!: sqlx::types::Json<ExecutionProcessData>\"\n        FROM execution_processes ep\n        JOIN sessions s ON ep.session_id = s.id\n        WHERE s.workspace_id = $1\n          AND ep.status = 'running'\n          AND ep.run_reason = 'devserver'\n        ORDER BY ep.created_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "session_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "run_reason!: ExecutionProcessRunReason",
+        "type_info": {
+          "Custom": {
+            "name": "execution_process_run_reason",
+            "kind": {
+              "Enum": [
+                "setupscript",
+                "cleanupscript",
+                "codingagent",
+                "devserver"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "status!: ExecutionProcessStatus",
+        "type_info": {
+          "Custom": {
+            "name": "execution_process_status",
+            "kind": {
+              "Enum": [
+                "running",
+                "completed",
+                "failed",
+                "killed"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "data!: sqlx::types::Json<ExecutionProcessData>",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e70579c3af6624849e39f71dad351ed2aac2d6364ca5119ff376a7090855f102"
+}

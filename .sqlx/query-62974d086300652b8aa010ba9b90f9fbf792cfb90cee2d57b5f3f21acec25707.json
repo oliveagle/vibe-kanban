@@ -1,0 +1,72 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n                          id              as \"id!: Uuid\",\n                          session_id      as \"session_id!: Uuid\",\n                          run_reason      as \"run_reason!: ExecutionProcessRunReason\",\n                          status          as \"status!: ExecutionProcessStatus\",\n                          data            as \"data!: sqlx::types::Json<ExecutionProcessData>\"\n                   FROM execution_processes\n                   WHERE session_id = $1\n                      AND ($2 OR (data->>'dropped')::bool = FALSE)\n                    ORDER BY created_at ASC\n                    OFFSET $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "session_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "run_reason!: ExecutionProcessRunReason",
+        "type_info": {
+          "Custom": {
+            "name": "execution_process_run_reason",
+            "kind": {
+              "Enum": [
+                "setupscript",
+                "cleanupscript",
+                "codingagent",
+                "devserver"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "status!: ExecutionProcessStatus",
+        "type_info": {
+          "Custom": {
+            "name": "execution_process_status",
+            "kind": {
+              "Enum": [
+                "running",
+                "completed",
+                "failed",
+                "killed"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "data!: sqlx::types::Json<ExecutionProcessData>",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bool",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "62974d086300652b8aa010ba9b90f9fbf792cfb90cee2d57b5f3f21acec25707"
+}

@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n                    id              as \"id!: Uuid\",\n                    session_id      as \"session_id!: Uuid\",\n                    run_reason      as \"run_reason!: ExecutionProcessRunReason\",\n                    status          as \"status!: ExecutionProcessStatus\",\n                    data             as \"data!: sqlx::types::Json<ExecutionProcessData>\"\n               FROM execution_processes\n               WHERE id = $1 AND deleted_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "session_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "run_reason!: ExecutionProcessRunReason",
+        "type_info": {
+          "Custom": {
+            "name": "execution_process_run_reason",
+            "kind": {
+              "Enum": [
+                "setupscript",
+                "cleanupscript",
+                "codingagent",
+                "devserver"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "status!: ExecutionProcessStatus",
+        "type_info": {
+          "Custom": {
+            "name": "execution_process_status",
+            "kind": {
+              "Enum": [
+                "running",
+                "completed",
+                "failed",
+                "killed"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "data!: sqlx::types::Json<ExecutionProcessData>",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "20df4a3f89564fdbc7f2f18ba2a767ca5bf19fbf57d91dfc118404f3c09a4b1a"
+}

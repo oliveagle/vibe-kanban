@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n                    ep.id as \"id!: Uuid\",\n                    ep.session_id as \"session_id!: Uuid\",\n                    ep.run_reason as \"run_reason!: ExecutionProcessRunReason\",\n                    ep.status as \"status!: ExecutionProcessStatus\",\n                    ep.data as \"data!: sqlx::types::Json<ExecutionProcessData>\"\n               FROM execution_processes ep\n               JOIN sessions s ON ep.session_id = s.id\n               JOIN task_workspaces w ON s.workspace_id = w.id\n               JOIN tasks t ON w.task_id = t.id\n               WHERE ep.status = 'running' AND ep.run_reason = 'devserver' AND t.project_id = $1\n               ORDER BY ep.created_at ASC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "session_id!: Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "run_reason!: ExecutionProcessRunReason",
+        "type_info": {
+          "Custom": {
+            "name": "execution_process_run_reason",
+            "kind": {
+              "Enum": [
+                "setupscript",
+                "cleanupscript",
+                "codingagent",
+                "devserver"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "status!: ExecutionProcessStatus",
+        "type_info": {
+          "Custom": {
+            "name": "execution_process_status",
+            "kind": {
+              "Enum": [
+                "running",
+                "completed",
+                "failed",
+                "killed"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "data!: sqlx::types::Json<ExecutionProcessData>",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "77347238e4214f636b8b2425c586b2928710b0c7d6261df27a953f24fa3a05a4"
+}
