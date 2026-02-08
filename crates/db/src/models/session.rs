@@ -5,6 +5,26 @@ use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
 
+/// Session data stored in JSONB
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SessionData {
+    pub status: Option<String>,
+    pub executor: Option<String>,
+    #[ts(type = "Date | null")]
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+impl Default for SessionData {
+    fn default() -> Self {
+        Self {
+            status: None,
+            executor: None,
+            completed_at: None,
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum SessionError {
     #[error(transparent)]
@@ -16,10 +36,11 @@ pub enum SessionError {
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct Session {
     pub id: Uuid,
     pub workspace_id: Uuid,
-    pub executor: Option<String>,
+    pub data: sqlx::types::Json<SessionData>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -30,62 +51,65 @@ pub struct CreateSession {
 }
 
 impl Session {
-    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, SessionError> {
         sqlx::query_as!(
             Session,
             r#"SELECT id AS "id!: Uuid",
-                      workspace_id AS "workspace_id!: Uuid",
-                      executor,
-                      created_at AS "created_at!: DateTime<Utc>",
-                      updated_at AS "updated_at!: DateTime<Utc>"
-               FROM sessions
-               WHERE id = $1"#,
+                       workspace_id AS "workspace_id!: Uuid",
+                       data AS "data!: sqlx::types::Json<SessionData>",
+                       created_at AS "created_at!: DateTime<Utc>",
+                       updated_at AS "updated_at!: DateTime<Utc>"
+                FROM sessions
+                WHERE id = $1"#,
             id
         )
         .fetch_optional(pool)
         .await
+        .map_err(SessionError::Database)
     }
 
     pub async fn find_by_workspace_id(
         pool: &PgPool,
         workspace_id: Uuid,
-    ) -> Result<Vec<Self>, sqlx::Error> {
+    ) -> Result<Vec<Self>, SessionError> {
         sqlx::query_as!(
             Session,
             r#"SELECT id AS "id!: Uuid",
-                      workspace_id AS "workspace_id!: Uuid",
-                      executor,
-                      created_at AS "created_at!: DateTime<Utc>",
-                      updated_at AS "updated_at!: DateTime<Utc>"
-               FROM sessions
-               WHERE workspace_id = $1
-               ORDER BY created_at DESC"#,
+                       workspace_id AS "workspace_id!: Uuid",
+                       data AS "data!: sqlx::types::Json<SessionData>",
+                       created_at AS "created_at!: DateTime<Utc>",
+                       updated_at AS "updated_at!: DateTime<Utc>"
+                FROM sessions
+                WHERE workspace_id = $1
+                ORDER BY created_at DESC"#,
             workspace_id
         )
         .fetch_all(pool)
         .await
+        .map_err(SessionError::Database)
     }
 
     /// Find the latest session for a workspace
     pub async fn find_latest_by_workspace_id(
         pool: &PgPool,
         workspace_id: Uuid,
-    ) -> Result<Option<Self>, sqlx::Error> {
+    ) -> Result<Option<Self>, SessionError> {
         sqlx::query_as!(
             Session,
             r#"SELECT id AS "id!: Uuid",
-                      workspace_id AS "workspace_id!: Uuid",
-                      executor,
-                      created_at AS "created_at!: DateTime<Utc>",
-                      updated_at AS "updated_at!: DateTime<Utc>"
-               FROM sessions
-               WHERE workspace_id = $1
-               ORDER BY created_at DESC
-               LIMIT 1"#,
+                       workspace_id AS "workspace_id!: Uuid",
+                       data AS "data!: sqlx::types::Json<SessionData>",
+                       created_at AS "created_at!: DateTime<Utc>",
+                       updated_at AS "updated_at!: DateTime<Utc>"
+                FROM sessions
+                WHERE workspace_id = $1
+                ORDER BY created_at DESC
+                LIMIT 1"#,
             workspace_id
         )
         .fetch_optional(pool)
         .await
+        .map_err(SessionError::Database)
     }
 
     pub async fn create(
@@ -94,20 +118,26 @@ impl Session {
         id: Uuid,
         workspace_id: Uuid,
     ) -> Result<Self, SessionError> {
+        let session_data = SessionData {
+            executor: data.executor.clone(),
+            ..Default::default()
+        };
+        
         Ok(sqlx::query_as!(
             Session,
-            r#"INSERT INTO sessions (id, workspace_id, executor)
-               VALUES ($1, $2, $3)
-               RETURNING id AS "id!: Uuid",
-                         workspace_id AS "workspace_id!: Uuid",
-                         executor,
-                         created_at AS "created_at!: DateTime<Utc>",
-                         updated_at AS "updated_at!: DateTime<Utc>""#,
+            r#"INSERT INTO sessions (id, workspace_id, data)
+                VALUES ($1, $2, $3)
+                RETURNING id AS "id!: Uuid",
+                          workspace_id AS "workspace_id!: Uuid",
+                          data AS "data!: sqlx::types::Json<SessionData>",
+                          created_at AS "created_at!: DateTime<Utc>",
+                          updated_at AS "updated_at!: DateTime<Utc>""#,
             id,
             workspace_id,
-            data.executor
+            session_data
         )
         .fetch_one(pool)
-        .await?)
+        .await
+        .map_err(SessionError::Database)?)
     }
 }
