@@ -26,7 +26,7 @@ use services::services::{
 use tokio::sync::RwLock;
 use utils::{
     api::oauth::LoginStatus,
-    assets::{config_path, credentials_path},
+    assets::config_path,
     msg_store::MsgStore,
 };
 use uuid::Uuid;

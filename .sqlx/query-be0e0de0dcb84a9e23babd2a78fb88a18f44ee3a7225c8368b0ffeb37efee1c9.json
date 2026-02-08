@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE task_workspaces \n               SET data = data - 'container_ref',\n               updated_at = NOW()\n               WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "be0e0de0dcb84a9e23babd2a78fb88a18f44ee3a7225c8368b0ffeb37efee1c9"
+}

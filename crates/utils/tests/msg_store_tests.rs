@@ -1,7 +1,6 @@
 use std::sync::Arc;
-use tokio::sync::broadcast;
-use workspace_utils::msg_store::MsgStore;
-use workspace_utils::log_msg::LogMsg;
+use utils::msg_store::MsgStore;
+use utils::log_msg::LogMsg;
 
 #[tokio::test]
 async fn test_msg_store_push_and_get_history() {
@@ -13,7 +12,7 @@ async fn test_msg_store_push_and_get_history() {
     store.push_stderr("Error message").await;
     
     // Get history
-    let history = store.get_history().await;
+    let history: Vec<LogMsg> = store.get_history().await;
     
     assert_eq!(history.len(), 3);
     assert!(matches!(&history[0], LogMsg::Stdout(s) if s == "Hello"));
@@ -30,7 +29,7 @@ async fn test_msg_store_receiver() {
     store.push_stdout("Test message").await;
     
     // Should receive the message
-    let received = rx.recv().await.unwrap();
+    let received: LogMsg = rx.recv().await.unwrap();
     assert!(matches!(received, LogMsg::Stdout(s) if s == "Test message"));
 }
 
@@ -56,7 +55,7 @@ async fn test_msg_store_concurrent_push() {
     }
     
     // Verify all messages were stored
-    let history = store.get_history().await;
+    let history: Vec<LogMsg> = store.get_history().await;
     assert_eq!(history.len(), 100);
 }
 
@@ -66,7 +65,7 @@ async fn test_msg_store_session_id() {
     
     store.push_session_id("test-session-123".to_string()).await;
     
-    let history = store.get_history().await;
+    let history: Vec<LogMsg> = store.get_history().await;
     assert_eq!(history.len(), 1);
     assert!(matches!(&history[0], LogMsg::SessionId(s) if s == "test-session-123"));
 }
@@ -79,7 +78,7 @@ async fn test_msg_store_finished() {
     store.push_finished().await;
     store.push_stdout("After").await;
     
-    let history = store.get_history().await;
+    let history: Vec<LogMsg> = store.get_history().await;
     assert_eq!(history.len(), 3);
     assert!(matches!(&history[1], LogMsg::Finished));
 }
@@ -93,8 +92,8 @@ async fn test_msg_store_multiple_receivers() {
     store.push_stdout("Broadcast message").await;
     
     // Both receivers should get the message
-    let msg1 = rx1.recv().await.unwrap();
-    let msg2 = rx2.recv().await.unwrap();
+    let msg1: LogMsg = rx1.recv().await.unwrap();
+    let msg2: LogMsg = rx2.recv().await.unwrap();
     
     assert!(matches!(msg1, LogMsg::Stdout(s) if s == "Broadcast message"));
     assert!(matches!(msg2, LogMsg::Stdout(s) if s == "Broadcast message"));
@@ -108,7 +107,7 @@ async fn test_msg_store_history_ordering() {
         store.push_stdout(format!("Message {}", i)).await;
     }
     
-    let history = store.get_history().await;
+    let history: Vec<LogMsg> = store.get_history().await;
     assert_eq!(history.len(), 5);
     
     for (i, msg) in history.iter().enumerate() {

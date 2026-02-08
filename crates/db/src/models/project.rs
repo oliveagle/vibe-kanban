@@ -238,7 +238,7 @@ impl Project {
             id
         )
         .execute(pool)
-        .await;
+        .await?;
         Ok(())
     }
 

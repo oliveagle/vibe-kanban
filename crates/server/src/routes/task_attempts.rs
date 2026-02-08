@@ -1031,7 +1031,7 @@ pub async fn rebase_task_attempt(
         &worktree_path,
         &new_base_branch,
         &old_base_branch,
-        workspace.branch.as_deref().unwrap_or("main").clone(),
+        workspace.branch.as_deref().unwrap_or("main"),
     );
     if let Err(e) = result {
         use services::services::git::GitServiceError;

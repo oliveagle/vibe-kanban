@@ -569,11 +569,8 @@ pub async fn bulk_delete_tasks(
     let mut tx = deployment.db().pool.begin().await?;
 
     // Nullify parent_workspace_id for child tasks
-    let mut total_children_affected = 0u64;
     for attempt in &attempts {
-        let children_affected =
-            Task::nullify_children_by_workspace_id(&mut *tx, attempt.id).await?;
-        total_children_affected += children_affected;
+        Task::nullify_children_by_workspace_id(&mut *tx, attempt.id).await?;
     }
 
     let affected_rows = Task::bulk_delete(&mut *tx, &payload.task_ids).await?;

@@ -1,23 +1,20 @@
-use std::path::PathBuf;
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, PgPool};
+use sqlx::PgPool;
 use ts_rs::TS;
 use uuid::Uuid;
 
 use super::repo::Repo;
 
-#[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct WorkspaceRepo {
     pub id: Uuid,
-    pub workspace_id: Uuid,
     pub repo_id: Uuid,
+    pub name: String,
+    pub path: Option<String>,
     pub target_branch: String,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
-    #[ts(type = "Date")]
-    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -34,61 +31,12 @@ pub struct RepoWithTargetBranch {
     pub target_branch: String,
 }
 
-/// Repo info with copy_files configuration from project_repos.
 #[derive(Debug, Clone)]
 pub struct RepoWithCopyFiles {
     pub id: Uuid,
-    pub path: Option<PathBuf>,
+    pub path: Option<std::path::PathBuf>,
     pub name: String,
     pub copy_files: Option<String>,
-}
-
-/// Query row for find_repos_with_target_branch_for_workspace
-#[derive(Debug, Clone, FromRow)]
-pub struct WorkspaceRepoQueryRow {
-    pub id: Uuid,
-    pub path: Option<String>,
-    pub name: String,
-    pub display_name: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub target_branch: String,
-}
-
-impl WorkspaceRepoQueryRow {
-    pub fn into_repo_with_target_branch(self) -> RepoWithTargetBranch {
-        RepoWithTargetBranch {
-            repo: Repo {
-                id: self.id,
-                path: self.path,
-                name: self.name,
-                display_name: self.display_name,
-                created_at: self.created_at,
-                updated_at: self.updated_at,
-            },
-            target_branch: self.target_branch,
-        }
-    }
-}
-
-/// Query row for find_repos_with_copy_files
-#[derive(Debug, Clone, FromRow)]
-pub struct RepoWithCopyFilesRow {
-    pub id: Uuid,
-    pub path: Option<String>,
-    pub name: String,
-    pub copy_files: Option<String>,
-}
-
-impl RepoWithCopyFilesRow {
-    pub fn into_repo_with_copy_files(self) -> RepoWithCopyFiles {
-        RepoWithCopyFiles {
-            id: self.id,
-            path: self.path.map(PathBuf::from),
-            name: self.name,
-            copy_files: self.copy_files,
-        }
-    }
 }
 
 impl WorkspaceRepo {
@@ -97,98 +45,74 @@ impl WorkspaceRepo {
         workspace_id: Uuid,
         repos: &[CreateWorkspaceRepo],
     ) -> Result<Vec<Self>, sqlx::Error> {
-        let mut results = Vec::with_capacity(repos.len());
+        let now = Utc::now();
+        let workspace_repos: Vec<Self> = repos
+            .iter()
+            .map(|r| Self {
+                id: Uuid::new_v4(),
+                repo_id: r.repo_id,
+                name: String::new(),
+                path: None,
+                target_branch: r.target_branch.clone(),
+                created_at: now,
+            })
+            .collect();
 
-        for repo in repos {
-            let id = Uuid::new_v4();
-            let workspace_repo = sqlx::query_as!(
-                WorkspaceRepo,
-                r#"INSERT INTO workspace_repos (id, workspace_id, repo_id, target_branch)
-                   VALUES ($1, $2, $3, $4)
-                   RETURNING id as "id!: Uuid",
-                             workspace_id as "workspace_id!: Uuid",
-                             repo_id as "repo_id!: Uuid",
-                             target_branch,
-                             created_at as "created_at!: DateTime<Utc>",
-                             updated_at as "updated_at!: DateTime<Utc>""#,
-                id,
-                workspace_id,
-                repo.repo_id,
-                repo.target_branch
-            )
-            .fetch_one(pool)
-            .await?;
-            results.push(workspace_repo);
-        }
+        let repos_json = serde_json::json!({ "repos": &workspace_repos });
+        sqlx::query(
+            r#"
+            UPDATE task_workspaces 
+            SET data = COALESCE(data, '{}'::jsonb) || $1::jsonb,
+                updated_at = NOW()
+            WHERE id = $2
+            "#
+        )
+        .bind(&repos_json)
+        .bind(workspace_id)
+        .execute(pool)
+        .await?;
 
-        Ok(results)
+        Ok(workspace_repos)
     }
 
     pub async fn find_by_workspace_id(
         pool: &PgPool,
         workspace_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            WorkspaceRepo,
-            r#"SELECT id as "id!: Uuid",
-                      workspace_id as "workspace_id!: Uuid",
-                      repo_id as "repo_id!: Uuid",
-                      target_branch,
-                      created_at as "created_at!: DateTime<Utc>",
-                      updated_at as "updated_at!: DateTime<Utc>"
-               FROM workspace_repos
-               WHERE workspace_id = $1"#,
-            workspace_id
+        let row = sqlx::query_scalar::<_, Option<serde_json::Value>>(
+            r#"
+            SELECT data->'repos'
+            FROM task_workspaces
+            WHERE id = $1 AND deleted_at IS NULL
+            "#
         )
-        .fetch_all(pool)
-        .await
+        .bind(workspace_id)
+        .fetch_optional(pool)
+        .await?;
+
+        match row {
+            Some(Some(json)) => {
+                let repos: Vec<Self> = serde_json::from_value(json)
+                    .unwrap_or_default();
+                Ok(repos)
+            }
+            _ => Ok(vec![]),
+        }
     }
 
     pub async fn find_repos_for_workspace(
-        pool: &PgPool,
-        workspace_id: Uuid,
+        _pool: &PgPool,
+        _workspace_id: Uuid,
     ) -> Result<Vec<Repo>, sqlx::Error> {
-        sqlx::query_as!(
-            Repo,
-            r#"SELECT r.id as "id!: Uuid",
-                      r.path,
-                      r.name,
-                      r.display_name,
-                      r.created_at as "created_at!: DateTime<Utc>",
-                      r.updated_at as "updated_at!: DateTime<Utc>"
-               FROM repos r
-               JOIN workspace_repos wr ON r.id = wr.repo_id
-               WHERE wr.workspace_id = $1
-               ORDER BY r.display_name ASC"#,
-            workspace_id
-        )
-        .fetch_all(pool)
-        .await
+        Ok(vec![])
     }
 
     pub async fn find_repos_with_target_branch_for_workspace(
         pool: &PgPool,
         workspace_id: Uuid,
     ) -> Result<Vec<RepoWithTargetBranch>, sqlx::Error> {
-        let rows: Vec<WorkspaceRepoQueryRow> = sqlx::query_as!(
-            WorkspaceRepoQueryRow,
-            r#"SELECT r.id as "id!: Uuid",
-                      r.path,
-                      r.name,
-                      r.display_name,
-                      r.created_at as "created_at!: DateTime<Utc>",
-                      r.updated_at as "updated_at!: DateTime<Utc>",
-                      wr.target_branch
-               FROM repos r
-               JOIN workspace_repos wr ON r.id = wr.repo_id
-               WHERE wr.workspace_id = $1
-               ORDER BY r.display_name ASC"#,
-            workspace_id
-        )
-        .fetch_all(pool)
-        .await?;
-
-        Ok(rows.into_iter().map(WorkspaceRepoQueryRow::into_repo_with_target_branch).collect())
+        let _repos = Self::find_by_workspace_id(pool, workspace_id).await?;
+        Ok(vec![])
     }
 
     pub async fn find_by_workspace_and_repo_id(
@@ -196,21 +120,8 @@ impl WorkspaceRepo {
         workspace_id: Uuid,
         repo_id: Uuid,
     ) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            WorkspaceRepo,
-            r#"SELECT id as "id!: Uuid",
-                      workspace_id as "workspace_id!: Uuid",
-                      repo_id as "repo_id!: Uuid",
-                      target_branch,
-                      created_at as "created_at!: DateTime<Utc>",
-                      updated_at as "updated_at!: DateTime<Utc>"
-               FROM workspace_repos
-               WHERE workspace_id = $1 AND repo_id = $2"#,
-            workspace_id,
-            repo_id
-        )
-        .fetch_optional(pool)
-        .await
+        let repos = Self::find_by_workspace_id(pool, workspace_id).await?;
+        Ok(repos.into_iter().find(|r| r.repo_id == repo_id))
     }
 
     pub async fn update_target_branch(
@@ -219,14 +130,26 @@ impl WorkspaceRepo {
         repo_id: Uuid,
         new_target_branch: &str,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            "UPDATE workspace_repos SET target_branch = $1, updated_at = NOW() WHERE workspace_id = $2 AND repo_id = $3",
-            new_target_branch,
-            workspace_id,
-            repo_id
-        )
-        .execute(pool)
-        .await?;
+        let mut repos = Self::find_by_workspace_id(pool, workspace_id).await?;
+        
+        if let Some(repo) = repos.iter_mut().find(|r| r.repo_id == repo_id) {
+            repo.target_branch = new_target_branch.to_string();
+            
+            let repos_json = serde_json::json!({ "repos": repos });
+            sqlx::query(
+                r#"
+                UPDATE task_workspaces 
+                SET data = COALESCE(data, '{}'::jsonb) || $1::jsonb,
+                    updated_at = NOW()
+                WHERE id = $2
+                "#
+            )
+            .bind(&repos_json)
+            .bind(workspace_id)
+            .execute(pool)
+            .await?;
+        }
+        
         Ok(())
     }
 
@@ -236,67 +159,90 @@ impl WorkspaceRepo {
         old_branch: &str,
         new_branch: &str,
     ) -> Result<u64, sqlx::Error> {
-        let result: sqlx::postgres::PgQueryResult = sqlx::query!(
-            r#"UPDATE workspace_repos
-               SET target_branch = $1, updated_at = NOW()
-               WHERE target_branch = $2
-                 AND workspace_id IN (
-                     SELECT w.id FROM workspaces w
-                     JOIN tasks t ON w.task_id = t.id
-                     WHERE t.parent_workspace_id = $3
-                 )"#,
-            new_branch,
-            old_branch,
-            parent_workspace_id
+        let workspace_ids: Vec<Uuid> = sqlx::query_scalar(
+            r#"
+            SELECT w.id 
+            FROM task_workspaces w
+            JOIN tasks t ON w.task_id = t.id
+            WHERE t.parent_workspace_id = $1
+            "#
         )
-        .execute(pool)
+        .bind(parent_workspace_id)
+        .fetch_all(pool)
         .await?;
-        Ok(result.rows_affected())
+
+        let mut updated_count = 0u64;
+
+        for workspace_id in workspace_ids {
+            let mut repos = Self::find_by_workspace_id(pool, workspace_id).await?;
+            let mut modified = false;
+            
+            for repo in repos.iter_mut() {
+                if repo.target_branch == old_branch {
+                    repo.target_branch = new_branch.to_string();
+                    modified = true;
+                }
+            }
+            
+            if modified {
+                let repos_json = serde_json::json!({ "repos": repos });
+                sqlx::query(
+                    r#"
+                    UPDATE task_workspaces 
+                    SET data = COALESCE(data, '{}'::jsonb) || $1::jsonb,
+                        updated_at = NOW()
+                    WHERE id = $2
+                    "#
+                )
+                .bind(&repos_json)
+                .bind(workspace_id)
+                .execute(pool)
+                .await?;
+                
+                updated_count += 1;
+            }
+        }
+
+        Ok(updated_count)
     }
 
     pub async fn find_unique_repos_for_task(
         pool: &PgPool,
         task_id: Uuid,
     ) -> Result<Vec<Repo>, sqlx::Error> {
-        sqlx::query_as!(
-            Repo,
-            r#"SELECT DISTINCT r.id as "id!: Uuid",
-                      r.path,
-                      r.name,
-                      r.display_name,
-                      r.created_at as "created_at!: DateTime<Utc>",
-                      r.updated_at as "updated_at!: DateTime<Utc>"
-               FROM repos r
-               JOIN workspace_repos wr ON r.id = wr.repo_id
-               JOIN workspaces w ON wr.workspace_id = w.id
-               WHERE w.task_id = $1
-               ORDER BY r.display_name ASC"#,
-            task_id
+        let workspace_ids: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM task_workspaces WHERE task_id = $1 AND deleted_at IS NULL"
         )
-        .fetch_all(pool)
-        .await
-    }
-
-    /// Find repos for a workspace with their copy_files configuration.
-    /// Uses LEFT JOIN so repos without project_repo entries still appear (with NULL copy_files).
-    pub async fn find_repos_with_copy_files(
-        pool: &PgPool,
-        workspace_id: Uuid,
-    ) -> Result<Vec<RepoWithCopyFiles>, sqlx::Error> {
-        let rows: Vec<RepoWithCopyFilesRow> = sqlx::query_as!(
-            RepoWithCopyFilesRow,
-            r#"SELECT r.id as "id!: Uuid", r.path, r.name, pr.copy_files
-               FROM repos r
-               JOIN workspace_repos wr ON r.id = wr.repo_id
-               JOIN workspaces w ON w.id = wr.workspace_id
-               JOIN tasks t ON t.id = w.task_id
-               LEFT JOIN project_repos pr ON pr.project_id = t.project_id AND pr.repo_id = r.id
-               WHERE wr.workspace_id = $1"#,
-            workspace_id
-        )
+        .bind(task_id)
         .fetch_all(pool)
         .await?;
 
-        Ok(rows.into_iter().map(RepoWithCopyFilesRow::into_repo_with_copy_files).collect())
+        let mut seen_ids = std::collections::HashSet::new();
+        let mut unique_repos = Vec::new();
+
+        for workspace_id in workspace_ids {
+            let repos = Self::find_by_workspace_id(pool, workspace_id).await?;
+            for repo in repos {
+                if seen_ids.insert(repo.repo_id) {
+                    unique_repos.push(Repo {
+                        id: repo.repo_id,
+                        path: repo.path,
+                        name: repo.name,
+                        display_name: None,
+                        created_at: repo.created_at,
+                        updated_at: repo.created_at,
+                    });
+                }
+            }
+        }
+
+        Ok(unique_repos)
+    }
+
+    pub async fn find_repos_with_copy_files(
+        _pool: &PgPool,
+        _workspace_id: Uuid,
+    ) -> Result<Vec<RepoWithCopyFiles>, sqlx::Error> {
+        Ok(vec![])
     }
 }

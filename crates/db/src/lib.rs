@@ -1,7 +1,7 @@
-use std::{env, sync::Arc, time::Duration};
+use std::{env, time::Duration};
 
 use sqlx::{
-    Error, Pool, Postgres, PgPool,
+    Error, Pool, Postgres,
     postgres::PgPoolOptions,
 };
 

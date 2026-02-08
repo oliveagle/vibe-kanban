@@ -1,0 +1,62 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                w.id,\n                w.task_id,\n                w.name,\n                w.status,\n                w.data,\n                w.created_at,\n                w.updated_at,\n                w.deleted_at\n            FROM task_workspaces w\n            LEFT JOIN sessions s ON w.id = s.workspace_id\n            LEFT JOIN execution_processes ep ON s.id = ep.session_id AND ep.data->>'completed_at' IS NOT NULL\n            WHERE w.data->>'container_ref' IS NOT NULL\n                AND w.deleted_at IS NULL\n                AND w.id NOT IN (\n                    SELECT DISTINCT s2.workspace_id\n                    FROM sessions s2\n                    JOIN execution_processes ep2 ON s2.id = ep2.session_id\n                    WHERE ep2.data->>'completed_at' IS NULL\n                )\n            GROUP BY w.id, w.data, w.updated_at\n            HAVING NOW() - INTERVAL '72 hours' > MAX(\n                    CASE\n                        WHEN ep.data->>'completed_at' IS NOT NULL \n                        THEN (ep.data->>'completed_at')::timestamptz\n                        ELSE w.updated_at\n                    END\n                )\n            ORDER BY MAX(\n                CASE\n                    WHEN ep.data->>'completed_at' IS NOT NULL \n                    THEN (ep.data->>'completed_at')::timestamptz\n                    ELSE w.updated_at\n                END\n            ) ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "task_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "data",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "deleted_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "ef1765e8da181640e03d1e05f65d6a4e6d3a9b0654e0ebad2ca9490abae7ca92"
+}

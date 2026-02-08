@@ -152,7 +152,7 @@ impl Image {
     pub async fn delete(pool: &PgPool, id: Uuid) -> Result<(), sqlx::Error> {
         sqlx::query!(r#"DELETE FROM images WHERE id = $1"#, id)
             .execute(pool)
-            .await;
+            .await?;
         Ok(())
     }
 
@@ -204,7 +204,7 @@ impl TaskImage {
     pub async fn delete_by_task_id(pool: &PgPool, task_id: Uuid) -> Result<(), sqlx::Error> {
         sqlx::query!(r#"DELETE FROM task_images WHERE task_id = $1"#, task_id)
             .execute(pool)
-            .await;
+            .await?;
         Ok(())
     }
 

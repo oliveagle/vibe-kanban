@@ -14,6 +14,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
+base64 = "0.22"
 ts-rs = { workspace = true }
 rust-embed = "8.2"
 directories = "6.0.0"

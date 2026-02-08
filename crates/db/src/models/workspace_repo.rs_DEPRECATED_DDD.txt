@@ -1,0 +1,4 @@
+// DDD模式 - 所有仓库数据存储在聚合根的 data JSONB 中
+// 此文件已废弃，保留作为兼容性
+// 需要仓库数据时，从聚合根 workspace.data 中获取
+// 使用: workspace.data.repos 或 project.data.repos

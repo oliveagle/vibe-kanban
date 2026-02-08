@@ -61,7 +61,7 @@ impl ExecutionProcessRepoState {
                 now
             )
             .execute(pool)
-            .await;
+            .await?;
         }
 
         Ok(())
@@ -107,7 +107,7 @@ impl ExecutionProcessRepoState {
             repo_id
         )
         .execute(pool)
-        .await;
+        .await?;
         Ok(())
     }
 

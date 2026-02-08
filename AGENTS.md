@@ -310,8 +310,13 @@ $HOME/.local/share/vibe-kanban/
 # VK uses PostgreSQL as the primary database.
 # For development, a PostgreSQL container is automatically managed by the just dev-srv command.
 #
+# **Database Name**: `vibe_kanban` (DO NOT CHANGE - this is the official database name)
+#
+# **Default Connection (development)**:
+#   DATABASE_URL="postgres://vibekanban:vibekanban123@localhost:5632/vibe_kanban"
+#
 # To use an external PostgreSQL database, set the DATABASE_URL environment variable:
-#   export DATABASE_URL="postgres://user:password@host:port/database_name"
+#   export DATABASE_URL="postgres://user:password@host:port/vibe_kanban"
 │
 ├── agents/                      # Agent-specific configurations
 │   └── opencode/                # Opencode configuration
@@ -574,6 +579,101 @@ SELECT * FROM users WHERE deleted_at IS NULL;
 - **PostgreSQL 的 JSONB 索引保证查询性能**
 
 这是从 **关系型数据库思维** 到 **领域驱动设计** 的根本转变。
+
+---
+
+## DDD数据访问层重构计划（进行中）
+
+### 重构状态
+
+**当前状态**: 计划阶段，准备实施  
+**目标**: 将传统关系型数据库（30+表）重构为DDD聚合根模式（5个聚合根表）  
+**策略**: 直接迁移（需要停机维护窗口）  
+**预计工期**: 14-21天
+
+### 聚合根设计
+
+| 聚合根 | 状态 | data字段包含 | 备注 |
+|--------|------|--------------|------|
+| `users` | 待实施 | profile, credentials, preferences | 阶段1 |
+| `projects` | 待实施 | config, repos, settings, stats | 阶段2 |
+| `tasks` | 待实施 | title, description, workspaces, sessions | 阶段3 |
+| `repos` | 待实施 | path, display_name, 反向引用 | 阶段3 |
+| `execution_processes` | 待实施 | logs[], repo_states[], coding_agent_turn | 保持独立表，JSONB优化 |
+
+### 重构阶段
+
+#### 阶段1：低风险表（2-3天）
+- [ ] `user_credentials` → `users.data.credentials`
+- [ ] `tags` → 独立聚合根或合并到tasks
+- [ ] `scratch` → JSONB优化
+
+#### 阶段2：中等风险（3-5天）
+- [ ] `project_repos` → `projects.data.repos[]`
+- [ ] `execution_process_logs` → `execution_processes.data.logs[]`
+
+#### 阶段3：高风险重构（7-10天）
+- [ ] `workspaces` + `sessions` → `tasks.data.workspaces[]`
+- [ ] `execution_process_repo_states` → `execution_processes.data.repo_states[]`
+- [ ] `coding_agent_turns` → `execution_processes.data.coding_agent_turn`
+- [ ] `repos` → 独立聚合根 + 反向引用
+- [ ] 重写ContainerService和相关查询
+
+#### 阶段4：清理优化（2-3天）
+- [ ] 删除旧表
+- [ ] 添加JSONB索引
+- [ ] 性能测试
+- [ ] 更新TypeScript类型
+
+### 关键文件
+
+**数据库迁移**:
+- `crates/db/migrations/` - 新建DDD迁移
+
+**模型层**:
+- `crates/db/src/models/user.rs` - 新建聚合根
+- `crates/db/src/models/project.rs` - 重构
+- `crates/db/src/models/task.rs` - 重构
+- `crates/db/src/models/repo.rs` - 重构
+- `crates/db/src/models/execution_process.rs` - JSONB优化
+
+**服务层**:
+- `crates/server/src/services/project_service.rs`
+- `crates/server/src/services/container_service.rs`
+- `crates/server/src/services/workspace_manager.rs`
+
+**类型定义**:
+- `shared/types.ts` - 自动生成
+- `crates/server/src/bin/generate_types.rs`
+
+### 协作者信息
+
+**主要协作者**:
+- @oliveagle - 项目负责人
+- [其他协作者待添加]
+
+**分工建议**:
+- 协作者A: 阶段1 + 阶段2
+- 协作者B: 阶段3 (workspaces/sessions重构)
+- 协作者C: 阶段3 (execution_processes优化) + 阶段4
+
+### 详细计划文档
+
+完整计划保存在: `/home/oliveagle/.codebuddy/plans/electric-forging-darwin.md`
+
+### 实施注意事项
+
+1. **数据备份**: 重构前必须完整备份数据库
+2. **停机窗口**: 直接迁移策略需要安排停机维护时间
+3. **版本管理**: 重构涉及大量文件变更，需要版本号升级
+4. **测试覆盖**: 每个阶段完成后必须运行完整测试
+5. **回滚方案**: 准备数据库回滚脚本
+
+### 当前阻塞项
+
+- [ ] 数据库备份确认
+- [ ] 停机维护窗口安排
+- [ ] 协作者分工确认
 
 ### Browser-Based Debugging (dev-browser Skill)
 - Checking console errors in real browser environment

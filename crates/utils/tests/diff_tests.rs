@@ -2,7 +2,7 @@
 
 use utils::diff::{
     compute_line_change_counts, concatenate_diff_hunks, create_unified_diff,
-    extract_unified_diff_hunks, fix_hunk_headers, normalize_unified_diff, DiffChangeKind,
+    extract_unified_diff_hunks, normalize_unified_diff, DiffChangeKind,
 };
 
 #[test]
@@ -52,31 +52,6 @@ fn test_extract_unified_diff_hunks_no_headers() {
 fn test_extract_unified_diff_hunks_empty() {
     let hunks = extract_unified_diff_hunks("");
     assert!(hunks.is_empty());
-}
-
-#[test]
-fn test_fix_hunk_headers_basic() {
-    let hunks = vec!["@@\n line1\n".to_string()];
-    let fixed = fix_hunk_headers(hunks);
-    assert_eq!(fixed.len(), 1);
-    assert!(fixed[0].contains("@@ -1,"));
-}
-
-#[test]
-fn test_fix_hunk_headers_empty_hunk() {
-    let hunks = vec!["@@\n".to_string()];
-    let fixed = fix_hunk_headers(hunks);
-    // Should skip empty hunks
-    assert!(fixed.is_empty());
-}
-
-#[test]
-fn test_fix_hunk_headers_valid_header() {
-    // Valid headers should remain unchanged
-    let hunks = vec!["@@ -1,5 +1,5 @@\n line1\n".to_string()];
-    let fixed = fix_hunk_headers(hunks);
-    assert_eq!(fixed.len(), 1);
-    assert!(fixed[0].contains("@@ -1,5 +1,5 @@"));
 }
 
 #[test]

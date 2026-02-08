@@ -490,7 +490,7 @@ ORDER BY t.created_at DESC"#,
 
         if updates.description.is_some() {
             query_parts.push(format!("description = ${}", param_count));
-            param_count += 1;
+            // param_count is not used after this, skip increment
         }
 
         if query_parts.is_empty() {

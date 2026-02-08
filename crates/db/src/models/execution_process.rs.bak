@@ -57,47 +57,23 @@ pub enum ExecutionProcessRunReason {
     DevServer,
 }
 
-/// ExecutionProcess data stored in JSONB
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ExecutionProcessData {
-    #[serde(default)]
-    pub executor_action: Option<Value>,
-    #[serde(default)]
-    pub exit_code: Option<i32>,
-    #[serde(default)]
-    pub dropped: bool,
-    #[serde(default)]
-    pub started_at: Option<DateTime<Utc>>,
-    #[serde(default)]
-    pub repo_states: Vec<ExecutionProcessRepoStateData>,
-    #[serde(flatten)]
-    pub extra: Value,
-}
-
-/// Repo state data embedded in execution_processes.data JSONB
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExecutionProcessRepoStateData {
-    pub repo_id: Uuid,
-    #[serde(default)]
-    pub before_head_commit: Option<String>,
-    #[serde(default)]
-    pub after_head_commit: Option<String>,
-    #[serde(default)]
-    pub merge_commit: Option<String>,
-}
-
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
 pub struct ExecutionProcess {
     pub id: Uuid,
     pub session_id: Uuid,
     pub run_reason: ExecutionProcessRunReason,
+    #[ts(type = "ExecutorAction")]
+    pub executor_action: sqlx::types::Json<ExecutorActionField>,
     pub status: ExecutionProcessStatus,
-    /// DDD: All process data stored in JSONB
-    #[ts(type = "ExecutionProcessData")]
-    pub data: sqlx::types::Json<ExecutionProcessData>,
+    pub exit_code: Option<i32>,
+    /// dropped: true if this process is excluded from the current
+    /// history view (due to restore/trimming). Hidden from logs/timeline;
+    /// still listed in the Processes tab.
+    pub dropped: bool,
+    pub started_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -144,68 +120,23 @@ pub struct MissingBeforeContext {
 }
 
 impl ExecutionProcess {
-    /// Helper: Get executor_action from JSONB data
-    pub fn executor_action(&self) -> Result<&ExecutorAction, anyhow::Error> {
-        match &self.data.executor_action {
-            Some(val) => {
-                let action: ExecutorAction = serde_json::from_value(val.clone())
-                    .map_err(|e| anyhow::anyhow!("Failed to parse executor_action: {}", e))?;
-                Err(anyhow::anyhow!("executor_action must be accessed via data field directly"))
-            }
-            None => Err(anyhow::anyhow!("No executor_action in data")),
-        }
-    }
-
-    /// Helper: Get executor_action as Value for serialization
-    pub fn executor_action_value(&self) -> Option<&Value> {
-        self.data.executor_action.as_ref()
-    }
-
-    /// Helper: Get exit_code from JSONB data
-    pub fn exit_code(&self) -> Option<i32> {
-        self.data.exit_code
-    }
-
-    /// Helper: Get dropped from JSONB data
-    pub fn dropped(&self) -> bool {
-        self.data.dropped
-    }
-
-    /// Helper: Get started_at from JSONB data
-    pub fn started_at(&self) -> Option<DateTime<Utc>> {
-        self.data.started_at
-    }
-
-    /// Helper: Get repo_states from JSONB data
-    pub fn repo_states(&self) -> &[ExecutionProcessRepoStateData] {
-        &self.data.repo_states
-    }
-
-    /// Helper: Get completed_at (alias for backward compatibility)
-    pub fn completed_at(&self) -> Option<DateTime<Utc>> {
-        if let Some(completed_at) = self.data.extra.get("completed_at") {
-            if let Ok(dt) = serde_json::from_value::<DateTime<Utc>>(completed_at.clone()) {
-                return Some(dt);
-            }
-        }
-        None
-    }
-
     /// Find execution process by ID
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             ExecutionProcess,
             r#"SELECT
-                    id as "id!: Uuid",
-                    session_id as "session_id!: Uuid",
-                    run_reason as "run_reason!: ExecutionProcessRunReason",
-                    status as "status!: ExecutionProcessStatus",
-                    data as "data!: sqlx::types::Json<ExecutionProcessData>",
-                    created_at as "created_at!: DateTime<Utc>",
-                    updated_at as "updated_at!: DateTime<Utc>",
-                    deleted_at as "deleted_at: DateTime<Utc>"
-               FROM execution_processes
-               WHERE id = $1 AND deleted_at IS NULL"#,
+                    ep.id as "id!: Uuid",
+                    ep.session_id as "session_id!: Uuid",
+                    ep.run_reason as "run_reason!: ExecutionProcessRunReason",
+                    ep.executor_action as "executor_action!: sqlx::types::Json<ExecutorActionField>",
+                    ep.status as "status!: ExecutionProcessStatus",
+                    ep.exit_code,
+                    ep.dropped as "dropped!: bool",
+                    ep.started_at as "started_at!: DateTime<Utc>",
+                    ep.completed_at as "completed_at: DateTime<Utc>",
+                    ep.created_at as "created_at!: DateTime<Utc>",
+                    ep.updated_at as "updated_at!: DateTime<Utc>"
+               FROM execution_processes ep WHERE ep.id = $1"#,
             id
         )
         .fetch_optional(pool)
@@ -213,39 +144,37 @@ impl ExecutionProcess {
     }
 
     /// Context for backfilling before_head_commit for legacy rows
-    /// DDD: Query repo_states from JSONB data
+    /// List processes that have after_head_commit set but missing before_head_commit, with join context
     pub async fn list_missing_before_context(
         pool: &PgPool,
     ) -> Result<Vec<MissingBeforeContext>, sqlx::Error> {
-        let rows: Vec<MissingBeforeContext> = sqlx::query_as(
-            r#"
-            SELECT
-                ep.id as id,
-                ep.session_id as session_id,
-                s.workspace_id as workspace_id,
-                (rs.elem->>'repo_id')::uuid as repo_id,
-                (prev_rs.elem->>'after_head_commit') as prev_after_head_commit,
-                wr.target_branch as target_branch,
-                r.path as repo_path
+        let rows: Vec<MissingBeforeContext> = sqlx::query_as!(
+            MissingBeforeContext,
+            r#"SELECT
+                ep.id                         as "id!: Uuid",
+                ep.session_id                 as "session_id!: Uuid",
+                s.workspace_id                as "workspace_id!: Uuid",
+                eprs.repo_id                  as "repo_id!: Uuid",
+                prev.after_head_commit        as prev_after_head_commit,
+                wr.target_branch              as "target_branch!",
+                r.path                        as "repo_path: String"
             FROM execution_processes ep
             JOIN sessions s ON s.id = ep.session_id
-            CROSS JOIN LATERAL jsonb_array_elements(ep.data->'repo_states') AS rs(elem)
-            JOIN repos r ON r.id = (rs.elem->>'repo_id')::uuid
+            JOIN execution_process_repo_states eprs ON eprs.execution_process_id = ep.id
+            JOIN repos r ON r.id = eprs.repo_id
             JOIN task_workspaces w ON w.id = s.workspace_id
-            JOIN workspace_repos wr ON wr.workspace_id = w.id AND wr.repo_id = (rs.elem->>'repo_id')::uuid
-            LEFT JOIN LATERAL (
-                SELECT jsonb_array_elements(prev_ep.data->'repo_states') as elem
-                FROM execution_processes prev_ep
-                WHERE prev_ep.session_id = ep.session_id
-                  AND prev_ep.created_at < ep.created_at
-                  AND prev_ep.deleted_at IS NULL
-                ORDER BY prev_ep.created_at DESC
-                LIMIT 1
-            ) prev_rs ON true
-            WHERE ep.deleted_at IS NULL
-              AND rs.elem->>'before_head_commit' IS NULL
-              AND rs.elem->>'after_head_commit' IS NOT NULL
-            "#
+            JOIN workspace_repos wr ON wr.workspace_id = w.id AND wr.repo_id = eprs.repo_id
+            LEFT JOIN execution_process_repo_states prev
+              ON prev.execution_process_id = (
+                   SELECT id FROM execution_processes
+                     WHERE session_id = ep.session_id
+                       AND created_at < ep.created_at
+                     ORDER BY created_at DESC
+                     LIMIT 1
+               )
+              AND prev.repo_id = eprs.repo_id
+            WHERE eprs.before_head_commit IS NULL
+              AND eprs.after_head_commit IS NOT NULL"#
         )
         .fetch_all(pool)
         .await?;

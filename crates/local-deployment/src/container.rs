@@ -544,7 +544,7 @@ impl LocalContainerService {
 
             // Cleanup msg store
             if let Some(msg_arc) = msg_stores.write().await.remove(&exec_id) {
-                msg_arc.push_finished();
+                msg_arc.push_finished().await;
                 tokio::time::sleep(Duration::from_millis(50)).await; // Wait for the finish message to propogate
                 match Arc::try_unwrap(msg_arc) {
                     Ok(inner) => drop(inner),
@@ -1183,7 +1183,7 @@ impl ContainerService for LocalContainerService {
 
         // Mark the process finished in the MsgStore
         if let Some(msg) = self.msg_stores.write().await.remove(&execution_process.id) {
-            msg.push_finished();
+            msg.push_finished().await;
         }
 
         // Update task status to InReview when execution is stopped

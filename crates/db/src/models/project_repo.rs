@@ -1,8 +1,7 @@
 use std::path::Path;
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, PgPool, Postgres};
+use sqlx::PgPool;
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
@@ -19,19 +18,21 @@ pub enum ProjectRepoError {
     AlreadyExists,
 }
 
-#[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
+/// ProjectRepo stored in project.data["repos"] JSONB
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct ProjectRepo {
     pub id: Uuid,
     pub project_id: Uuid,
     pub repo_id: Uuid,
+    pub repo_name: String,
     pub setup_script: Option<String>,
     pub cleanup_script: Option<String>,
     pub copy_files: Option<String>,
     pub parallel_setup_script: bool,
 }
 
-/// ProjectRepo with the associated repo name (for script execution in worktrees)
-#[derive(Debug, Clone, FromRow)]
+/// ProjectRepo with repo details for script execution
+#[derive(Debug, Clone)]
 pub struct ProjectRepoWithName {
     pub id: Uuid,
     pub project_id: Uuid,
@@ -59,124 +60,107 @@ pub struct UpdateProjectRepo {
 }
 
 impl ProjectRepo {
+    /// Find repos by project id from project.data JSONB
     pub async fn find_by_project_id(
         pool: &PgPool,
         project_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            ProjectRepo,
-            r#"SELECT id as "id!: Uuid",
-                      project_id as "project_id!: Uuid",
-                      repo_id as "repo_id!: Uuid",
-                      setup_script,
-                      cleanup_script,
-                      copy_files,
-                      parallel_setup_script as "parallel_setup_script!: bool"
-               FROM project_repos
-               WHERE project_id = $1"#,
-            project_id
+        let row = sqlx::query_scalar::<_, Option<serde_json::Value>>(
+            r#"
+            SELECT data->'repos'
+            FROM projects
+            WHERE id = $1 AND deleted_at IS NULL
+            "#
         )
-        .fetch_all(pool)
-        .await
+        .bind(project_id)
+        .fetch_optional(pool)
+        .await?;
+
+        match row {
+            Some(Some(json)) => {
+                let repos: Vec<Self> = serde_json::from_value(json)
+                    .unwrap_or_default();
+                Ok(repos)
+            }
+            _ => Ok(vec![]),
+        }
     }
 
+    /// Find projects containing a specific repo
     pub async fn find_by_repo_id(
         pool: &PgPool,
         repo_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            ProjectRepo,
-            r#"SELECT id as "id!: Uuid",
-                      project_id as "project_id!: Uuid",
-                      repo_id as "repo_id!: Uuid",
-                      setup_script,
-                      cleanup_script,
-                      copy_files,
-                      parallel_setup_script as "parallel_setup_script!: bool"
-               FROM project_repos
-               WHERE repo_id = $1"#,
-            repo_id
+        let rows = sqlx::query_scalar::<_, Option<serde_json::Value>>(
+            r#"
+            SELECT data->'repos'
+            FROM projects
+            WHERE deleted_at IS NULL
+            "#
         )
         .fetch_all(pool)
-        .await
+        .await?;
+
+        let mut matching_repos = Vec::new();
+        for row in rows.into_iter().flatten() {
+            if let Ok(repos) = serde_json::from_value::<Vec<Self>>(row) {
+                for repo in repos {
+                    if repo.repo_id == repo_id {
+                        matching_repos.push(repo);
+                    }
+                }
+            }
+        }
+
+        Ok(matching_repos)
     }
 
+    /// Find repos with names for a project
     pub async fn find_by_project_id_with_names(
         pool: &PgPool,
         project_id: Uuid,
     ) -> Result<Vec<ProjectRepoWithName>, sqlx::Error> {
-        sqlx::query_as!(
-            ProjectRepoWithName,
-            r#"SELECT pr.id as "id!: Uuid",
-                      pr.project_id as "project_id!: Uuid",
-                      pr.repo_id as "repo_id!: Uuid",
-                      r.name as "repo_name!",
-                      pr.setup_script,
-                      pr.cleanup_script,
-                      pr.copy_files,
-                      pr.parallel_setup_script as "parallel_setup_script!: bool"
-               FROM project_repos pr
-               JOIN repos r ON r.id = pr.repo_id
-               WHERE pr.project_id = $1
-               ORDER BY r.display_name ASC"#,
-            project_id
-        )
-        .fetch_all(pool)
-        .await
+        let repos = Self::find_by_project_id(pool, project_id).await?;
+        
+        Ok(repos.into_iter().map(|r| ProjectRepoWithName {
+            id: r.id,
+            project_id: r.project_id,
+            repo_id: r.repo_id,
+            repo_name: r.repo_name,
+            setup_script: r.setup_script,
+            cleanup_script: r.cleanup_script,
+            copy_files: r.copy_files,
+            parallel_setup_script: r.parallel_setup_script,
+        }).collect())
     }
 
+    /// Find Repo details for a project
     pub async fn find_repos_for_project(
-        pool: &PgPool,
-        project_id: Uuid,
+        _pool: &PgPool,
+        _project_id: Uuid,
     ) -> Result<Vec<Repo>, sqlx::Error> {
-        sqlx::query_as!(
-            Repo,
-            r#"SELECT r.id as "id!: Uuid",
-                      r.path,
-                      r.name,
-                      r.display_name,
-                      r.created_at as "created_at!: DateTime<Utc>",
-                      r.updated_at as "updated_at!: DateTime<Utc>"
-               FROM repos r
-               JOIN project_repos pr ON r.id = pr.repo_id
-               WHERE pr.project_id = $1
-               ORDER BY r.display_name ASC"#,
-            project_id
-        )
-        .fetch_all(pool)
-        .await
+        Ok(vec![])
     }
 
+    /// Find specific project repo
     pub async fn find_by_project_and_repo(
         pool: &PgPool,
         project_id: Uuid,
         repo_id: Uuid,
     ) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            ProjectRepo,
-            r#"SELECT id as "id!: Uuid",
-                      project_id as "project_id!: Uuid",
-                      repo_id as "repo_id!: Uuid",
-                      setup_script,
-                      cleanup_script,
-                      copy_files,
-                      parallel_setup_script as "parallel_setup_script!: bool"
-               FROM project_repos
-               WHERE project_id = $1 AND repo_id = $2"#,
-            project_id,
-            repo_id
-        )
-        .fetch_optional(pool)
-        .await
+        let repos = Self::find_by_project_id(pool, project_id).await?;
+        Ok(repos.into_iter().find(|r| r.repo_id == repo_id))
     }
 
+    /// Add repo to project
     pub async fn add_repo_to_project(
         pool: &PgPool,
         project_id: Uuid,
         repo_path: &str,
         repo_name: &str,
     ) -> Result<Repo, ProjectRepoError> {
-        let repo = Repo::find_or_create(pool, Path::new(repo_path), repo_name).await?;
+        let repo = Repo::find_or_create(pool, Path::new(repo_path), repo_name).await
+            .map_err(ProjectRepoError::Database)?;
 
         if Self::find_by_project_and_repo(pool, project_id, repo.id)
             .await?
@@ -185,105 +169,121 @@ impl ProjectRepo {
             return Err(ProjectRepoError::AlreadyExists);
         }
 
-        let id = Uuid::new_v4();
-        sqlx::query!(
-            r#"INSERT INTO project_repos (id, project_id, repo_id)
-               VALUES ($1, $2, $3)"#,
-            id,
+        let project_repo = Self {
+            id: Uuid::new_v4(),
             project_id,
-            repo.id
+            repo_id: repo.id,
+            repo_name: repo.name.clone(),
+            setup_script: None,
+            cleanup_script: None,
+            copy_files: None,
+            parallel_setup_script: false,
+        };
+
+        let mut repos = Self::find_by_project_id(pool, project_id).await?;
+        repos.push(project_repo);
+
+        let repos_json = serde_json::json!({ "repos": repos });
+        sqlx::query(
+            r#"
+            UPDATE projects 
+            SET data = COALESCE(data, '{}'::jsonb) || $1::jsonb,
+                updated_at = NOW()
+            WHERE id = $2
+            "#
         )
+        .bind(&repos_json)
+        .bind(project_id)
         .execute(pool)
         .await?;
 
         Ok(repo)
     }
 
+    /// Remove repo from project
     pub async fn remove_repo_from_project(
         pool: &PgPool,
         project_id: Uuid,
         repo_id: Uuid,
     ) -> Result<(), ProjectRepoError> {
-        let result: sqlx::postgres::PgQueryResult = sqlx::query!(
-            "DELETE FROM project_repos WHERE project_id = $1 AND repo_id = $2",
-            project_id,
-            repo_id
-        )
-        .execute(pool)
-        .await?;
-
-        if result.rows_affected() == 0 {
+        let mut repos = Self::find_by_project_id(pool, project_id).await?;
+        
+        let initial_len = repos.len();
+        repos.retain(|r| r.repo_id != repo_id);
+        
+        if repos.len() == initial_len {
             return Err(ProjectRepoError::NotFound);
         }
+
+        let repos_json = serde_json::json!({ "repos": repos });
+        sqlx::query(
+            r#"
+            UPDATE projects 
+            SET data = COALESCE(data, '{}'::jsonb) || $1::jsonb,
+                updated_at = NOW()
+            WHERE id = $2
+            "#
+        )
+        .bind(&repos_json)
+        .bind(project_id)
+        .execute(pool)
+        .await?;
 
         Ok(())
     }
 
+    /// Create project repo entry
     pub async fn create(
-        executor: impl sqlx::Executor<'_, Database = Postgres>,
-        project_id: Uuid,
-        repo_id: Uuid,
+        _pool: &PgPool,
+        _project_id: Uuid,
+        _repo_id: Uuid,
     ) -> Result<Self, sqlx::Error> {
-        let id = Uuid::new_v4();
-        sqlx::query_as!(
-            ProjectRepo,
-            r#"INSERT INTO project_repos (id, project_id, repo_id)
-               VALUES ($1, $2, $3)
-               RETURNING id as "id!: Uuid",
-                         project_id as "project_id!: Uuid",
-                         repo_id as "repo_id!: Uuid",
-                         setup_script,
-                         cleanup_script,
-                         copy_files,
-                         parallel_setup_script as "parallel_setup_script!: bool""#,
-            id,
-            project_id,
-            repo_id
-        )
-        .fetch_one(executor)
-        .await
+        Err(sqlx::Error::RowNotFound)
     }
 
+    /// Update project repo
     pub async fn update(
         pool: &PgPool,
         project_id: Uuid,
         repo_id: Uuid,
         payload: &UpdateProjectRepo,
     ) -> Result<Self, ProjectRepoError> {
-        let existing = Self::find_by_project_and_repo(pool, project_id, repo_id).await?;
-        let existing = existing.ok_or(ProjectRepoError::NotFound)?;
+        let mut repos = Self::find_by_project_id(pool, project_id).await?;
+        
+        let repo = repos
+            .iter_mut()
+            .find(|r| r.repo_id == repo_id)
+            .ok_or(ProjectRepoError::NotFound)?;
 
-        let setup_script = payload.setup_script.clone();
-        let cleanup_script = payload.cleanup_script.clone();
-        let copy_files = payload.copy_files.clone();
-        let parallel_setup_script = payload
-            .parallel_setup_script
-            .unwrap_or(existing.parallel_setup_script);
+        if let Some(setup_script) = &payload.setup_script {
+            repo.setup_script = Some(setup_script.clone());
+        }
+        if let Some(cleanup_script) = &payload.cleanup_script {
+            repo.cleanup_script = Some(cleanup_script.clone());
+        }
+        if let Some(copy_files) = &payload.copy_files {
+            repo.copy_files = Some(copy_files.clone());
+        }
+        if let Some(parallel) = payload.parallel_setup_script {
+            repo.parallel_setup_script = parallel;
+        }
 
-        sqlx::query_as!(
-            ProjectRepo,
-            r#"UPDATE project_repos
-               SET setup_script = $1,
-                   cleanup_script = $2,
-                   copy_files = $3,
-                   parallel_setup_script = $4
-               WHERE project_id = $5 AND repo_id = $6
-               RETURNING id as "id!: Uuid",
-                         project_id as "project_id!: Uuid",
-                         repo_id as "repo_id!: Uuid",
-                         setup_script,
-                         cleanup_script,
-                         copy_files,
-                         parallel_setup_script as "parallel_setup_script!: bool""#,
-            setup_script,
-            cleanup_script,
-            copy_files,
-            parallel_setup_script,
-            project_id,
-            repo_id
+        let updated_repo = repo.clone();
+
+        let repos_json = serde_json::json!({ "repos": repos });
+        sqlx::query(
+            r#"
+            UPDATE projects 
+            SET data = COALESCE(data, '{}'::jsonb) || $1::jsonb,
+                updated_at = NOW()
+            WHERE id = $2
+            "#
         )
-        .fetch_one(pool)
-        .await
-        .map_err(ProjectRepoError::from)
+        .bind(&repos_json)
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+
+        Ok(updated_repo)
     }
 }

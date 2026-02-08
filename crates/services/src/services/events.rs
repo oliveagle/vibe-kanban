@@ -1,14 +1,14 @@
-use std::{str::FromStr, sync::Arc};
+use std::sync::Arc;
 
 use db::{
     DBService,
     models::{
-        execution_process::ExecutionProcess, project::Project, scratch::Scratch, task::Task,
+        execution_process::ExecutionProcess, project::Project, task::Task,
         workspace::Workspace,
     },
 };
 use serde_json::Value;
-use sqlx::{Error as SqlxError, Postgres, PgPool};
+use sqlx::{Error as SqlxError, PgPool};
 use tokio::sync::RwLock;
 use utils::msg_store::MsgStore;
 use uuid::Uuid;
@@ -84,7 +84,7 @@ impl EventService {
     ) -> Result<(), SqlxError> {
         let data: Value = serde_json::from_str(payload).unwrap_or_default();
         
-        if let (Some(table), Some(op), Some(id_str)) = (
+        if let (Some(table), Some(_op), Some(id_str)) = (
             data.get("table").and_then(|v| v.as_str()),
             data.get("operation").and_then(|v| v.as_str()),
             data.get("id").and_then(|v| v.as_str()),

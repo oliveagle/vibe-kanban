@@ -6,7 +6,6 @@ use axum::{
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::DeploymentImpl;
-use crate::middleware::auth_middleware;
 
 pub mod approvals;
 pub mod config;
@@ -40,9 +39,12 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
     // OAuth routes - no auth required
     let oauth_routes = oauth::router().with_state(deployment.clone());
 
+    // Public routes - no auth required
+    let public_routes = Router::new()
+        .route("/health", get(health::health_check));
+
     // Protected routes - auth required
     let protected_routes = Router::new()
-        .route("/health", get(health::health_check))
         .merge(config::router())
         .merge(containers::router(&deployment))
         .merge(container_orchestration::router(&deployment))
@@ -69,6 +71,7 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
 
     let api_routes = Router::new()
         .merge(oauth_routes)
+        .merge(public_routes)
         .merge(protected_routes);
 
     Router::new()

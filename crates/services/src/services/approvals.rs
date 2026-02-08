@@ -153,7 +153,7 @@ impl Approvals {
                     .with_tool_status(status)
                     .ok_or(ApprovalError::NoToolUseEntry)?;
 
-                store.push_patch(ConversationPatch::replace(p.entry_index, updated_entry));
+                store.push_patch(ConversationPatch::replace(p.entry_index, updated_entry)).await;
             } else {
                 tracing::warn!(
                     "No msg_store found for execution_process_id: {}",
@@ -235,7 +235,7 @@ impl Approvals {
                         store.push_patch(ConversationPatch::replace(
                             pending_approval.entry_index,
                             updated_entry,
-                        ));
+                        )).await;
                     } else {
                         tracing::warn!(
                             "Timed out approval '{}' but couldn't update tool status (no tool-use entry).",

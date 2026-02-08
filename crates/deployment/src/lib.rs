@@ -12,7 +12,7 @@ use db::{
     },
 };
 use executors::executors::ExecutorError;
-use futures::{StreamExt, TryStreamExt};
+use futures::StreamExt;
 use git2::Error as Git2Error;
 use serde_json::Value;
 use services::services::{
