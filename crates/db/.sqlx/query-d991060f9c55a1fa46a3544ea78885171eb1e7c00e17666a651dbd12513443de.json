@@ -1,16 +1,16 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                    ep.id,\n                    ep.session_id,\n                    ep.run_reason as \"run_reason!: ExecutionProcessRunReason\",\n                    ep.status as \"status!: ExecutionProcessStatus\",\n                    ep.data,\n                    ep.created_at,\n                    ep.updated_at\n               FROM execution_processes ep WHERE ep.id = $1",
+  "query": "SELECT\n                    id as \"id!: Uuid\",\n                    session_id as \"session_id!: Uuid\",\n                    run_reason as \"run_reason!: ExecutionProcessRunReason\",\n                    status as \"status!: ExecutionProcessStatus\",\n                    data as \"data!: sqlx::types::Json<ExecutionProcessData>\",\n                    created_at as \"created_at!: DateTime<Utc>\",\n                    updated_at as \"updated_at!: DateTime<Utc>\",\n                    deleted_at as \"deleted_at: DateTime<Utc>\"\n               FROM execution_processes\n               WHERE id = $1 AND deleted_at IS NULL",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id",
+        "name": "id!: Uuid",
         "type_info": "Uuid"
       },
       {
         "ordinal": 1,
-        "name": "session_id",
+        "name": "session_id!: Uuid",
         "type_info": "Uuid"
       },
       {
@@ -49,17 +49,22 @@
       },
       {
         "ordinal": 4,
-        "name": "data",
+        "name": "data!: sqlx::types::Json<ExecutionProcessData>",
         "type_info": "Jsonb"
       },
       {
         "ordinal": 5,
-        "name": "created_at",
+        "name": "created_at!: DateTime<Utc>",
         "type_info": "Timestamptz"
       },
       {
         "ordinal": 6,
-        "name": "updated_at",
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "deleted_at: DateTime<Utc>",
         "type_info": "Timestamptz"
       }
     ],
@@ -75,8 +80,9 @@
       false,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "64f70ea64b7262254586549954263e93ce5e57a7f7b46939f2c2b70199673ee9"
+  "hash": "d991060f9c55a1fa46a3544ea78885171eb1e7c00e17666a651dbd12513443de"
 }
