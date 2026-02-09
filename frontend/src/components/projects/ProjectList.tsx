@@ -50,7 +50,12 @@ export function ProjectList() {
 
   return (
     <div className="h-full flex gap-6 p-8 overflow-hidden">
-      {/* Left Column - Project List */}
+      {/* Left Column - Live Feed */}
+      <div className="w-80 flex-shrink-0 hidden lg:block">
+        <LiveFeed />
+      </div>
+
+      {/* Right Column - Project List */}
       <div className="flex-1 space-y-6 overflow-auto min-w-0">
         <div className="flex justify-between items-center">
           <div>
@@ -106,11 +111,6 @@ export function ProjectList() {
             ))}
           </div>
         )}
-      </div>
-
-      {/* Right Column - Live Feed */}
-      <div className="w-80 flex-shrink-0 hidden lg:block">
-        <LiveFeed />
       </div>
     </div>
   );
