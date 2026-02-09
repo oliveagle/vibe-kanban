@@ -109,7 +109,7 @@ pub trait ContainerService {
             let sessions = Session::find_by_workspace_id(&self.db().pool, workspace.id).await?;
             for session in sessions {
                 if let Ok(processes) =
-                    ExecutionProcess::find_by_session_id(&self.db().pool, session.id, false).await
+                    ExecutionProcess::find_by_session_id(&self.db().pool, session.id, false, None, None).await
                 {
                     for process in processes {
                         if process.status == ExecutionProcessStatus::Running {
@@ -539,7 +539,7 @@ pub trait ContainerService {
 
         for session in sessions {
             if let Ok(processes) =
-                ExecutionProcess::find_by_session_id(&self.db().pool, session.id, false).await
+                ExecutionProcess::find_by_session_id(&self.db().pool, session.id, false, None, None).await
             {
                 for process in processes {
                     // Skip dev server processes unless explicitly included

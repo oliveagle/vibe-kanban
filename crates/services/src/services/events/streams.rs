@@ -240,7 +240,7 @@ impl EventService {
         let mut all_processes = Vec::new();
         for session in &sessions {
             let processes =
-                ExecutionProcess::find_by_session_id(&self.db.pool, session.id, show_soft_deleted)
+                ExecutionProcess::find_by_session_id(&self.db.pool, session.id, show_soft_deleted, None, None)
                     .await?;
             all_processes.extend(processes);
         }

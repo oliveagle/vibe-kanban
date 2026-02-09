@@ -526,7 +526,7 @@ export const useConversationHistory = ({
     }, [executionProcesses]);
 
   const loadRemainingEntriesInBatches = useCallback(
-    async (batchSize: number): Promise<boolean> => {
+    async (_batchSize: number): Promise<boolean> => {
       if (!executionProcesses?.current) return false;
 
       // Get processes that need loading (not already loaded, not running)

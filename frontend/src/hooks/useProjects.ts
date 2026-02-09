@@ -28,11 +28,13 @@ export function useProjects(): UseProjectsResult {
   const projectsById = useMemo(() => data?.projects ?? {}, [data]);
 
   const projects = useMemo(() => {
-    return Object.values(projectsById).sort(
-      (a, b) =>
-        new Date(b.created_at as unknown as string).getTime() -
-        new Date(a.created_at as unknown as string).getTime()
-    );
+    return Object.values(projectsById)
+      .filter((p): p is Project => p != null && p.id != null)
+      .sort(
+        (a, b) =>
+          new Date(b.created_at as unknown as string).getTime() -
+          new Date(a.created_at as unknown as string).getTime()
+      );
   }, [projectsById]);
 
   const projectsData = data ? projects : undefined;

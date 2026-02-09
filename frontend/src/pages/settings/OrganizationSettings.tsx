@@ -34,7 +34,7 @@ import type {
 import { MemberListItem } from '@/components/org/MemberListItem';
 import { PendingInvitationItem } from '@/components/org/PendingInvitationItem';
 import { RemoteProjectItem } from '@/components/org/RemoteProjectItem';
-import type { MemberRole } from 'shared/types';
+import type { MemberRole, Project } from 'shared/types';
 import { MemberRole as MemberRoleEnum } from 'shared/types';
 import { useTranslation } from 'react-i18next';
 import { useProjects } from '@/hooks/useProjects';
@@ -144,8 +144,11 @@ export function OrganizationSettings() {
   const { data: remoteProjects = [], isLoading: loadingRemoteProjects } =
     useOrganizationProjects(selectedOrgId);
 
+  // Filter out any undefined/null projects for safety
+  const validProjects = allProjects.filter((p): p is Project => p != null);
+
   // Calculate available local projects (not linked to any remote project)
-  const availableLocalProjects = allProjects.filter(
+  const availableLocalProjects = validProjects.filter(
     (project) => !project.remote_project_id
   );
 
@@ -453,7 +456,7 @@ export function OrganizationSettings() {
               <div className="space-y-3">
                 {remoteProjects.map((remoteProject) => {
                   // Find the local project linked to this remote project
-                  const linkedLocalProject = allProjects.find(
+                  const linkedLocalProject = validProjects.find(
                     (p) => p.remote_project_id === remoteProject.id
                   );
 
