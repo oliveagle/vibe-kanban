@@ -1,0 +1,560 @@
+---
+title: "Container Orchestration"
+description: "Manage AI coding agent containers through Vibe Kanban's built-in orchestration API"
+icon: "https://www.vibekanban.com/images/icons/container.svg"
+---
+
+## Overview
+
+Vibe Kanban includes a built-in container orchestration API that allows you to manage agent containers directly. This enables:
+
+- **Dynamic agent deployment** - Pull and run agent containers on demand
+- **Lifecycle management** - Start, stop, and monitor agent containers
+- **Resource control** - Manage ports, environment variables, and volumes
+- **Multi-runtime support** - Works with both Docker and Podman
+
+<Info>
+The orchestration API is particularly useful when combined with [Toolbox Integration](/advanced/toolbox-integration) or [Distributed Architecture](/advanced/distributed-architecture).
+</Info>
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Vibe Kanban Server                         │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │          Container Orchestration API                      │  │
+│  │                                                           │  │
+│  │  POST /orchestration/images/pull      - Pull images      │  │
+│  │  GET  /orchestration/containers       - List containers  │  │
+│  │  POST /orchestration/containers/run   - Run container    │  │
+│  │  POST /orchestration/containers/{id}/start               │  │
+│  │  POST /orchestration/containers/{id}/stop                │  │
+│  │  POST /orchestration/containers/{id}/restart             │  │
+│  │  POST /orchestration/containers/{id}      - Remove       │  │
+│  │  GET  /orchestration/images           - List images      │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                           │                                     │
+│                           ▼                                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │               Podman/Docker CLI                          │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                            │
+        ┌───────────────────┼───────────────────┐
+        │                   │                   │
+        ▼                   ▼                   ▼
+┌───────────────┐   ┌───────────────┐   ┌───────────────┐
+│  Agent Image  │   │  Agent Image  │   │  Agent Image  │
+│  Claude Code  │   │   OpenCode   │   │    Cursor     │
+└───────────────┘   └───────────────┘   └───────────────┘
+```
+
+## API Reference
+
+### Pull Image
+
+Pull a container image from a registry.
+
+<RequestExample>
+```bash
+curl -X POST http://localhost:3000/api/orchestration/images/pull \
+  -H "Content-Type: application/json" \
+  -d '{"image": "ghcr.io/oliveagle/vibe-kanban/claude-code:latest"}'
+```
+</RequestExample>
+
+**Request Body:**
+
+```typescript
+interface PullImageRequest {
+  image: string;  // Image name (e.g., "nginx:alpine" or "ghcr.io/user/image:tag")
+}
+```
+
+**Response:**
+
+```typescript
+interface PullImageResponse {
+  success: true;
+  data: string;  // Pull output/logs
+}
+```
+
+<Warning>
+Image names without a registry prefix are automatically normalized. For example, `nginx:alpine` becomes `docker.io/library/nginx:alpine`.
+</Warning>
+
+### List Containers
+
+List all containers (running and stopped).
+
+<RequestExample>
+```bash
+curl http://localhost:3000/api/orchestration/containers
+```
+</RequestExample>
+
+**Response:**
+
+```typescript
+interface ContainerInfo {
+  id: string;
+  name: string;
+  image: string;
+  status: string;    // e.g., "running", "exited"
+  state: string;     // e.g., "running", "configured", "exited"
+  ports: PortMapping[];
+  created: string;
+}
+
+interface PortMapping {
+  host_port: string;
+  container_port: string;
+}
+
+interface ListContainersResponse {
+  success: true;
+  data: ContainerInfo[];
+}
+```
+
+### Run Container
+
+Create and start a new container.
+
+<RequestExample>
+```bash
+curl -X POST http://localhost:3000/api/orchestration/containers/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image": "nginx:alpine",
+    "name": "vk-nginx",
+    "ports": [{"host_port": "8080", "container_port": "80"}],
+    "env": ["ENV_VAR=value"],
+    "detach": true
+  }'
+```
+</RequestExample>
+
+**Request Body:**
+
+```typescript
+interface RunContainerRequest {
+  image: string;           // Image to run
+  name?: string;           // Container name (optional)
+  ports?: PortMapping[];   // Port mappings
+  env?: string[];          // Environment variables
+  cmd?: string[];          // Command to run
+  detach?: boolean;        // Run in background (default: true)
+}
+```
+
+**Response:**
+
+```typescript
+interface RunContainerResponse {
+  success: true;
+  data: {
+    container_id: string;  // ID of created container
+    output: string;        // Command output
+  };
+}
+```
+
+### Start/Stop/Restart Container
+
+Control container lifecycle.
+
+<RequestExample>
+```bash
+# Start a stopped container
+curl -X POST http://localhost:3000/api/orchestration/containers/{id}/start
+
+# Stop a running container
+curl -X POST http://localhost:3000/api/orchestration/containers/{id}/stop
+
+# Restart a container
+curl -X POST http://localhost:3000/api/orchestration/containers/{id}/restart
+```
+</RequestExample>
+
+**Response:**
+
+```typescript
+interface ContainerActionResponse {
+  success: true;
+  data: string;  // Command output
+}
+```
+
+### Remove Container
+
+Delete a container.
+
+<RequestExample>
+```bash
+curl -X POST http://localhost:3000/api/orchestration/containers/{id}
+```
+</RequestExample>
+
+<Warning>
+This permanently removes the container. The container must be stopped before it can be removed.
+</Warning>
+
+### List Images
+
+List all locally available images.
+
+<RequestExample>
+```bash
+curl http://localhost:3000/api/orchestration/images
+```
+</RequestExample>
+
+**Response:**
+
+```typescript
+interface ImageInfo {
+  id: string;
+  names: string[];    // Image tags/names
+  size: string;       // Human-readable size
+  created: string;    // Creation timestamp
+}
+
+interface ListImagesResponse {
+  success: true;
+  data: ImageInfo[];
+}
+```
+
+## Usage Examples
+
+<Warning>
+**Important:** Neither Claude Code nor OpenCode support dynamic worktree switching via API parameters. The working directory is fixed when the agent process starts. Vibe Kanban's current approach is to spawn a new agent for each task in its dedicated worktree.
+</Warning>
+
+### Example 1: Per-Task Agent Spawn (Current Default)
+
+```bash
+# Vibe Kanban automatically does this for each task:
+# 1. Create worktree
+# 2. Spawn agent in worktree
+# 3. Agent executes task
+# 4. Agent exits
+
+# Manual equivalent:
+WORKTREE=/vk/workspaces/task-123-branch
+
+# Spawn agent in worktree directory
+cd $WORKTREE
+npx -y @anthropic-ai/claude-code "fix the login bug"
+```
+
+### Example 2: Session Fork for Same Worktree
+
+<Warning>
+This mode spawns a new agent for each task. Use only for development. For production, use long-running pools (Example 1).
+</Warning>
+
+```bash
+# Step 1: Pull the image
+curl -X POST http://localhost:3000/api/orchestration/images/pull \
+  -H "Content-Type: application/json" \
+  -d '{"image": "ghcr.io/oliveagle/vibe-kanban/claude-code:latest"}'
+
+# Step 2: Run the container (will exit after task)
+curl -X POST http://localhost:3000/api/orchestration/containers/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image": "ghcr.io/oliveagle/vibe-kanban/claude-code:latest",
+    "name": "vk-agent-claude-code-task-123",
+    "ports": [{"host_port": "3001", "container_port": "3000"}],
+    "env": [
+      "CLAUDE_API_KEY=sk-...",
+      "WORKSPACE=/workspace"
+    ],
+    "detach": true
+  }'
+
+# Step 3: Check status
+curl http://localhost:3000/api/orchestration/containers
+```
+
+### Example 3: Run OpenCode with Project Mount
+
+```bash
+curl -X POST http://localhost:3000/api/orchestration/containers/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image": "ghcr.io/oliveagle/vibe-kanban/opencode:latest",
+    "name": "vk-agent-opencode-1",
+    "ports": [{"host_port": "3002", "container_port": "3000"}],
+    "env": ["OPENCODE_MODEL=kimi-for-coding"],
+    "cmd": ["opencode", "--mcp-server", "--port", "3000"]
+  }'
+```
+
+### Example 4: Batch Deploy Worktree-Aware Agents
+
+```bash
+#!/bin/bash
+# deploy-worktree-aware-agents.sh
+
+# Deploy agents that accept worktree path parameter
+AGENTS=(
+  "claude-code:3001"
+  "opencode:3002"
+)
+
+for AGENT in "${AGENTS[@]}"; do
+  IFS=':' read -r NAME PORT <<< "$AGENT"
+
+  echo "Deploying $NAME on port $PORT (worktree-aware mode)..."
+
+  curl -X POST http://localhost:3000/api/orchestration/containers/run \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"image\": \"ghcr.io/oliveagle/vibe-kanban/$NAME:latest\",
+      \"name\": \"vk-agent-$NAME\",
+      \"ports\": [{\"host_port\": \"$PORT\", \"container_port\": \"3000\"}],
+      \"cmd\": [\"agent\", \"--mcp-server\", \"--port\", \"3000\"],
+      \"detach\": true
+    }"
+
+  echo "✓ $NAME deployed and running"
+done
+
+echo ""
+echo "Worktree-aware agents ready:"
+echo "  Tasks will include worktree_path parameter"
+echo "  Agents will cd into specified worktree before executing"
+```
+```
+
+## Configuration
+
+### Backend Configuration
+
+The orchestration API uses the following environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CONTAINER_RUNTIME` | Runtime to use (`podman` or `docker`) | `podman` |
+| `HTTPS_PROXY` | Proxy for pulling images | `http://host.containers.internal:1080` |
+| `HTTP_PROXY` | Proxy for pulling images | `http://host.containers.internal:1080` |
+
+### Runtime Selection
+
+<Check>
+Vibe Kanban auto-detects the available runtime. Podman is preferred on Fedora systems.
+</Check>
+
+```rust
+// Runtime detection in crates/server/src/routes/container_orchestration.rs
+let runtime = if std::path::Path::new("/usr/bin/podman").exists() {
+    "podman"
+} else {
+    "docker"
+};
+```
+
+## Advanced Topics
+
+### Volume Mounts
+
+For persistent storage, mount volumes when running containers:
+
+```bash
+curl -X POST http://localhost:3000/api/orchestration/containers/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image": "ghcr.io/oliveagle/vibe-kanban/agent:latest",
+    "name": "vk-agent-with-storage",
+    "env": [
+      "VOLUMES=/workspace:/data"
+    ]
+  }'
+```
+
+<Info>
+Currently, volume mounts are specified through environment variables. Future versions will support direct volume mount configuration.
+</Info>
+
+### Network Configuration
+
+Containers use host networking by default for seamless communication:
+
+```rust
+// In container creation
+let args = vec![
+    "run",
+    "-d",           // Detached mode
+    "--network", "host",  // Host networking
+    "-p", "3001:3000",   // Port mapping
+    "image:tag"
+];
+```
+
+### Resource Limits
+
+To set resource limits, modify the container configuration:
+
+```bash
+# Memory limit
+podman update --memory 2g vk-agent-claude-code
+
+# CPU limit
+podman update --cpus 2 vk-agent-claude-code
+```
+
+## Integration with Other Features
+
+### MCP Server
+
+Agent containers can expose MCP servers:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Vibe Kanban Server                    │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │              MCP Server (port 3000)              │   │
+│  └───────────────┬─────────────────────────────────┘   │
+│                  │                                       │
+│                  │ MCP                                   │
+│      ┌───────────┼───────────┐                          │
+│      │           │           │                          │
+│      ▼           ▼           ▼                          │
+│  ┌────────┐ ┌────────┐ ┌────────┐                      │
+│  │ Claude │ │OpenCode│ │ Cursor │                      │
+│  │  :3001 │ │  :3002 │ │  :3003 │                      │
+│  └────────┘ └────────┘ └────────┘                      │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Workspace Management
+
+Agents can access workspaces through shared mounts:
+
+```rust
+// crates/server/src/routes/container_orchestration.rs
+let workspace_mount = format!(
+    "{}:/workspace",
+    std::env::var("VK_WORKSPACE_DIR").unwrap_or("/tmp".to_string())
+);
+```
+
+## Troubleshooting
+
+### Container Won't Start
+
+```bash
+# Check container logs
+podman logs vk-agent-claude-code
+
+# Inspect container
+podman inspect vk-agent-claude-code
+
+# Check image exists
+curl http://localhost:3000/api/orchestration/images
+```
+
+### Port Already in Use
+
+```bash
+# Find process using the port
+sudo lsof -i :3001
+
+# Stop conflicting container
+curl -X POST http://localhost:3000/api/orchestration/containers/{id}/stop
+```
+
+### Image Pull Fails
+
+```bash
+# Check proxy settings
+echo $HTTPS_PROXY
+
+# Try pulling manually
+podman pull ghcr.io/oliveagle/vibe-kanban/agent:latest
+
+# Check registry authentication
+podman login ghcr.io
+```
+
+### Permission Denied
+
+```bash
+# Check user permissions
+groups $USER
+
+# Add user to podman/docker group
+sudo usermod -aG podman $USER
+
+# Re-login required
+```
+
+## Security Considerations
+
+### Container Isolation
+
+<Warning>
+Agents run with `--network=host` by default for performance. For production, consider using isolated networks.
+</Warning>
+
+### API Access
+
+The orchestration API should be protected:
+
+```rust
+// In production, require authentication
+if !is_authenticated(&request) {
+    return Err(ApiError::Unauthorized);
+}
+```
+
+### Secret Management
+
+Never pass secrets through API requests. Use mounted volumes:
+
+```bash
+# Mount secret file
+--mount type=bind,source=/secrets/api-key,destination=/run/secrets/api-key,readonly=true
+```
+
+## Performance Optimization
+
+### Image Caching
+
+Images are cached locally after first pull:
+
+```bash
+# List cached images
+curl http://localhost:3000/api/orchestration/images
+
+# Pre-pull common images
+for img in claude-code opencode cursor-agent; do
+  curl -X POST http://localhost:3000/api/orchestration/images/pull \
+    -H "Content-Type: application/json" \
+    -d "{\"image\": \"ghcr.io/oliveagle/vibe-kanban/$img:latest\"}"
+done
+```
+
+### Container Reuse
+
+Keep containers running for multiple tasks:
+
+```bash
+# Start once
+curl -X POST http://localhost:3000/api/orchestration/containers/run ...
+
+# Execute multiple tasks
+# (via MCP or exec)
+```
+
+## Related Topics
+
+- [Toolbox Integration](/advanced/toolbox-integration) - Running agents in Toolbx
+- [Distributed Architecture](/advanced/distributed-architecture) - Multi-node deployments
+- [MCP Server Configuration](/integrations/mcp-server-configuration) - Agent communication

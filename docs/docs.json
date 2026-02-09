@@ -65,6 +65,19 @@
         ]
       },
       {
+        "group": "Advanced",
+        "pages": [
+          {
+            "group": "Deployment Architecture",
+            "pages": [
+              "advanced/toolbox-integration",
+              "advanced/distributed-architecture",
+              "advanced/container-orchestration"
+            ]
+          }
+        ]
+      },
+      {
         "group": "Configuration & Customisation",
         "pages": [
           "configuration-customisation/global-settings",

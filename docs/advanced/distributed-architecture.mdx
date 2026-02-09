@@ -1,0 +1,1480 @@
+---
+title: "Distributed Architecture"
+description: "Deploy Vibe Kanban and AI agents across multiple nodes for scalability and resilience"
+icon: "https://www.vibekanban.com/images/icons/distributed.svg"
+---
+
+## Overview
+
+Vibe Kanban supports distributed deployment patterns that allow you to:
+
+- **Scale horizontally** - Deploy agents across multiple machines
+- **Improve resilience** - No single point of failure
+- **Optimize resources** - Leverage specialized hardware per agent type
+- **Enable collaboration** - Multiple developers with isolated agent environments
+
+<Warning>
+Distributed deployments add complexity. Start with a single-node deployment and scale out when needed.
+</Warning>
+
+## Architecture Patterns
+
+### Centralized Orchestrator
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Node 1 (Coordinator)                         │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │                    Vibe Kanban Server                        │  │
+│  │  - Task scheduling and distribution                          │  │
+│  │  - Result aggregation                                        │  │
+│  │  - State management (PostgreSQL)                             │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐            │
+│  │   PostgreSQL │  │     Redis    │  │   File Store │            │
+│  └──────────────┘  └──────────────┘  └──────────────┘            │
+└─────────────────────────────────────────────────────────────────────┘
+                               │
+                ┌──────────────┼──────────────┐
+                │              │              │
+                ▼              ▼              ▼
+        ┌───────────┐  ┌───────────┐  ┌───────────┐
+        │  Node 2   │  │  Node 3   │  │  Node 4   │
+        │           │  │           │  │           │
+        │ Agent P1  │  │ Agent P2  │  │ Agent P3  │
+        │ GPU Type  │  │ CPU Type  │  │ Mem Type  │
+        └───────────┘  └───────────┘  └───────────┘
+```
+
+### Multi-Coordinator High Availability
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                          Load Balancer                             │
+└─────────────────────────────────────────────────────────────────────┘
+                │                             │
+        ┌───────┴────────┐           ┌────────┴───────┐
+        │                │           │                │
+        ▼                ▼           ▼                ▼
+┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
+│ VK Instance 1 │ │ VK Instance 2 │ │ VK Instance 3 │ │ PostgreSQL    │
+│   (Primary)   │ │  (Standby)    │ │  (Standby)    │ │   (Primary)   │
+└───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘
+        │                │                │
+        └────────────────┴────────────────┘
+                         │
+                ┌────────┴────────┐
+                │                 │
+                ▼                 ▼
+        ┌───────────┐     ┌───────────┐
+        │ Agent Pool│     │ Agent Pool│
+        │  Region A │     │  Region B │
+        └───────────┘     └───────────┘
+```
+
+## Task Distribution Models
+
+When deploying across multiple cloud nodes, you need to decide how tasks are shared and distributed.
+
+### Model A: Centralized Orchestrator
+
+A central coordinator manages a global task pool and distributes work to available nodes.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Cloud Environment                            │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │              Central Orchestrator (VK Server)                │   │
+│  │  - PostgreSQL (task queue + state)                           │   │
+│  │  - Redis (task distribution)                                 │   │
+│  │  - Global task pool                                          │   │
+│  └───────────────────────┬─────────────────────────────────────┘   │
+│                           │                                          │
+│        ┌──────────────────┼──────────────────┐                     │
+│        │                  │                  │                     │
+│        ▼                  ▼                  ▼                     │
+│  ┌──────────┐      ┌──────────┐      ┌──────────┐                │
+│  │  Node A  │      │  Node B  │      │  Node C  │                │
+│  │          │      │          │      │          │                │
+│  │ Projects:│      │ Projects:│      │ Projects:│                │
+│  │ vk, web  │      │ mobile   │      │ infra    │                │
+│  │          │      │          │      │          │                │
+│  │ Pulls    │      │ Pulls    │      │ Pulls    │                │
+│  │ related  │      │ related  │      │ related  │                │
+│  │ tasks    │      │ tasks    │      │ tasks    │                │
+│  └──────────┘      └──────────┘      └──────────┘                │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Workflow:**
+1. All tasks enter the global task pool (PostgreSQL + Redis Queue)
+2. Each node polls periodically: `GET /api/tasks?project=my-project&agent=available`
+3. Orchestrator assigns tasks to appropriate nodes based on tags/projects
+4. Node reports completion: `POST /api/tasks/{id}/complete`
+
+**Pros:**
+- Global task visibility, can reassign failed tasks
+- Supports task prioritization and load balancing
+- Easy monitoring and debugging
+
+**Cons:**
+- Single point of failure (requires HA setup)
+- Network dependency
+
+**Implementation:**
+
+```rust
+// crates/server/src/routes/task_distribution.rs
+
+pub async fn claim_tasks(
+    State(pool): State<PgPool>,
+    Json(request): Json<ClaimTasksRequest>,
+) -> Result<Json<ApiResponse<Vec<Task>>>, ApiError> {
+    let node_id = &request.node_id;
+    let projects = &request.projects;
+
+    // Claim tasks with row-level locking
+    let tasks = sqlx::query_as!(
+        Task,
+        r#"
+        SELECT * FROM tasks
+        WHERE project_id = ANY($1)
+          AND status = 'pending'
+        LIMIT $2
+        FOR UPDATE SKIP LOCKED
+        "#,
+        projects,
+        request.batch_size as i64
+    )
+    .fetch_all(&pool)
+    .await?;
+
+    // Mark tasks as claimed
+    for task in &tasks {
+        sqlx::query!(
+            "UPDATE tasks SET status = 'claimed', assigned_node = $2, claimed_at = NOW() WHERE id = $1",
+            task.id,
+            node_id
+        )
+        .execute(&pool)
+        .await?;
+    }
+
+    Ok(Json(ApiResponse::success(tasks)))
+}
+```
+
+### Model B: Decentralized (Node-Autonomous)
+
+Each node independently manages its own task queue.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Cloud Environment                            │
+│                                                                     │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐    │
+│  │     Node A      │  │     Node B      │  │     Node C      │    │
+│  │                 │  │                 │  │                 │    │
+│  │  VK Server      │  │  VK Server      │  │  VK Server      │    │
+│  │  PostgreSQL     │  │  PostgreSQL     │  │  PostgreSQL     │    │
+│  │                 │  │                 │  │                 │    │
+│  │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌───────────┐  │    │
+│  │  │ vk project│  │  │  │ mobile    │  │  │  │ infra     │  │    │
+│  │  │ tasks     │  │  │  │ tasks     │  │  │  │ tasks     │  │    │
+│  │  └───────────┘  │  │  └───────────┘  │  │  └───────────┘  │    │
+│  │  ┌───────────┐  │  │                 │  │                 │    │
+│  │  │Agent Pool │  │  │  ┌───────────┐  │  │  ┌───────────┐  │    │
+│  │  │           │  │  │  │Agent Pool │  │  │  │Agent Pool │  │    │
+│  │  └───────────┘  │  │  └───────────┘  │  │  └───────────┘  │    │
+│  └───────┬─────────┘  └────────┬────────┘  └────────┬────────┘    │
+│          │                     │                     │             │
+│          └─────────────────────┴─────────────────────┘             │
+│                            │                                       │
+│                            ▼                                       │
+│              ┌─────────────────────────┐                          │
+│              │  Shared Storage (S3/NFS) │                          │
+│              │  - Code sync             │                          │
+│              │  - Artifact sharing      │                          │
+│              └─────────────────────────┘                          │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Workflow:**
+1. Each node manages its own task queue independently
+2. Git sync for task state
+3. Shared storage (S3/NFS) for artifacts
+
+**Pros:**
+- No single point of failure
+- Node autonomy, network failure doesn't affect local development
+
+**Cons:**
+- Tasks difficult to reassign across nodes
+- Manual coordination required for project allocation
+
+### Model C: Hybrid with Node-Level Decision Making
+
+<Info>
+This is the **recommended architecture** for production deployments. It separates concerns: central coordinator handles repository and high-level task coordination, while each node has a decision center that intelligently routes tasks to appropriate agents.
+</Info>
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Cloud Environment                                 │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │                    Central Orchestrator                             │   │
+│  │  ✓ Repository management (Git sync, worktree creation)              │   │
+│  │  ✓ High-level task coordination                                     │   │
+│  │  ✓ Task assignment to nodes (agent-agnostic)                       │   │
+│  │  ✗ Agent selection (delegated to nodes)                            │   │
+│  └────────────────────────────────────┬─────────────────────────────────┘   │
+│                                       │                                      │
+│                 Assign tasks to nodes (without specifying agents)          │
+│                                       │                                      │
+│        ┌──────────────────────────────┼──────────────────────────────┐      │
+│        │                              │                              │      │
+│        ▼                              ▼                              ▼      │
+│  ┌───────────────┐              ┌───────────────┐              ┌───────────────┐
+│  │    Node A     │              │    Node B     │              │    Node C     │
+│  │               │              │               │              │               │
+│  │ ┌─────────────────────────────────────────────────────────────────┐   │   │
+│  │ │         Node Decision Center (Claude Code)                     │   │   │
+│  │ │                                                                 │   │   │
+│  │ │  Role: Task Analysis & Worker Orchestration                    │   │   │
+│  │ │  ─────────────────────────────────────────────────────────     │   │   │
+│  │ │  • Analyze incoming task (code review, bug fix, feature...)    │   │   │
+│  │ │  • Decide which agent + model to use                           │   │   │
+│  │ │  • Route task to appropriate worker                            │   │   │
+│  │ │  • Monitor execution and handle failures                       │   │   │
+│  │ │                                                                 │   │   │
+│  │ │  Why Claude Code?                                              │   │   │
+│  │ │  • Strong multi-agent coordination capabilities                │   │   │
+│  │ │  • Can orchestrate complex workflows                           │   │   │
+│  │ │  • Good at task decomposition                                  │   │   │
+│  │ └────────────────────────┬──────────────────────────────────────┘   │   │
+│  │                          │                                          │   │
+│  │                          ▼                                          │   │
+│  │         ┌────────────────────────────────────────────┐            │   │   │
+│  │         │              Worker Pool                    │            │   │   │
+│  │         │                                              │            │   │   │
+│  │         │  Task Type              Agent    Model      │            │   │   │
+│  │         │  ─────────────────────────────────────────   │            │   │   │
+│  │         │  Code editing          OpenCode Kimi         │            │   │   │
+│  │         │  Code review           OpenCode DeepSeek     │            │   │   │
+│  │         │  Architecture design   OpenCode GPT-4       │            │   │   │
+│  │         │  Documentation         OpenCode Qwen        │            │   │   │
+│  │         │  Debugging             OpenCode Claude      │            │   │   │
+│  │         │                                              │            │   │   │
+│  │         │  Why OpenCode?                                │            │   │   │
+│  │         │  • Easy model switching                       │            │   │   │
+│  │         │  • Supports multiple LLM providers            │            │   │   │
+│  │         │  • Good at focused code tasks                 │            │   │   │
+│  │         └──────────────────────────────────────────────┘            │   │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Workflow Example:**
+
+```bash
+# 1. Central Orchestrator creates a task
+# POST /api/tasks
+{
+  "project_id": "vibe-kanban",
+  "title": "Fix authentication bug in login flow",
+  "description": "Users cannot log in with special characters in password",
+  "priority": "high",
+  "target_node": "node-a"  // Only specify which node, not which agent
+}
+
+# 2. Node A's Decision Center (Claude Code) receives the task
+# Analyzes task type → "bug fix in authentication code"
+# Decides → Use OpenCode with Claude model (good at debugging)
+
+# 3. Node A routes to OpenCode worker
+# OpenCode executes the task with appropriate model
+
+# 4. Result reported back to Central Orchestrator
+```
+
+**Node Decision Logic (Claude Code):**
+
+```rust
+// crates/services/src/services/decision_center.rs
+
+pub struct DecisionCenter {
+    claude_code_client: ClaudeCodeClient,
+    opencode_workers: HashMap<String, OpenCodeWorker>,
+}
+
+impl DecisionCenter {
+    pub async fn process_task(&self, task: Task) -> Result<TaskResult> {
+        // Step 1: Analyze task with Claude Code
+        let analysis = self.claude_code_client
+            .analyze(&task)
+            .await?;
+
+        // Step 2: Select appropriate worker based on analysis
+        let worker = self.select_worker(&analysis)?;
+
+        // Step 3: Execute task with selected worker
+        let result = worker.execute(task, analysis.model).await?;
+
+        Ok(result)
+    }
+
+    fn select_worker(&self, analysis: &TaskAnalysis) -> Result<&OpenCodeWorker> {
+        match analysis.task_type {
+            TaskType::CodeEdit => Ok(self.opencode_workers.get("kimi").unwrap()),
+            TaskType::CodeReview => Ok(self.opencode_workers.get("deepseek").unwrap()),
+            TaskType::Architecture => Ok(self.opencode_workers.get("gpt4").unwrap()),
+            TaskType::Documentation => Ok(self.opencode_workers.get("qwen").unwrap()),
+            TaskType::Debugging => Ok(self.opencode_workers.get("claude").unwrap()),
+            _ => Ok(self.opencode_workers.get("default").unwrap()),
+        }
+    }
+}
+```
+
+**Task Analysis Prompt Template:**
+
+```markdown
+You are the Node Decision Center. Analyze this task and recommend the best agent+model combination.
+
+Task: {title}
+Description: {description}
+Files affected: {files}
+
+Respond in JSON format:
+{
+  "task_type": "code_edit|code_review|architecture|documentation|debugging",
+  "complexity": "low|medium|high",
+  "recommended_worker": "opencode",
+  "recommended_model": "kimi|deepseek|gpt4|qwen|claude",
+  "reasoning": "..."
+}
+```
+
+**Pros:**
+- Clear separation of concerns
+- Central orchestrator stays simple
+- Nodes have autonomy to choose best tools
+- Claude Code's orchestration strengths are utilized
+- OpenCode's model flexibility is leveraged
+
+**Cons:**
+- More components to manage
+- Need reliable Claude Code installation on each node
+
+**Configuration:**
+
+```toml
+# config/node-decision-center.toml
+[node]
+id = "node-a"
+region = "ap-south-1"
+
+[decision_center]
+# Claude Code as the decision/orchestration engine
+scheduler = "claude_code"
+claude_code_path = "/usr/local/bin/claude"
+
+[workers.opencode]
+# OpenCode workers with different models
+enabled = true
+
+[workers.opencode.models.kimi]
+endpoint = "https://api.moonshot.cn/v1"
+model = "moonshot-v1-8k"
+best_for = ["code_edit", "refactoring"]
+
+[workers.opencode.models.deepseek]
+endpoint = "https://api.deepseek.com/v1"
+model = "deepseek-coder"
+best_for = ["code_review", "analysis"]
+
+[workers.opencode.models.gpt4]
+endpoint = "https://api.openai.com/v1"
+model = "gpt-4-turbo"
+best_for = ["architecture", "design"]
+
+[workers.opencode.models.qwen]
+endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+model = "qwen-coder-plus"
+best_for = ["documentation", "comments"]
+
+[workers.opencode.models.claude]
+endpoint = "https://api.anthropic.com/v1"
+model = "claude-3-5-sonnet-20241022"
+best_for = ["debugging", "complex_logic"]
+
+# Task routing rules (can be overridden by Claude Code analysis)
+[routing]
+code_edit = "kimi"
+code_review = "deepseek"
+architecture = "gpt4"
+documentation = "qwen"
+debugging = "claude"
+```
+
+### Comparison: Task Distribution Models
+
+| Aspect | Centralized | Decentralized | Hybrid with Decision Center |
+|--------|-------------|---------------|----------------------------|
+| **Complexity** | Medium | High | Medium |
+| **SPOF** | Yes (coordinator) | No | No |
+| **Task Reassignment** | Easy | Difficult | Easy |
+| **Network Dependency** | High | Low | Medium |
+| **Load Balancing** | Automatic | Manual | Automatic |
+| **Agent Selection** | Central | Per-node | Per-node (intelligent) |
+| **Best For** | Teams < 50 | Distributed teams | Most scenarios |
+
+<Info>
+**Recommendation:** Use the **Hybrid with Decision Center** model. Claude Code excels at orchestration while OpenCode provides flexible model selection, creating an optimal division of labor.
+</Info>
+
+## Agent Lifecycle: Per-Task vs Long-Running
+
+<Warning>
+**Critical Architecture Constraint:** Vibe Kanban's core design is **1 task = 1 worktree**. Each task has its own isolated worktree directory where the agent operates. **Neither Claude Code nor OpenCode support dynamic worktree switching at runtime.** The working directory is fixed when the agent process starts.
+</Warning>
+
+### The Worktree Constraint
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Vibe Kanban Architecture                         │
+│                                                                     │
+│  Task 1 ──> Worktree A (/vk/worktrees/task-1-branch/)               │
+│              └──> Agent runs in Worktree A                          │
+│                                                                     │
+│  Task 2 ──> Worktree B (/vk/worktrees/task-2-branch/)               │
+│              └──> Agent runs in Worktree B                          │
+│                                                                     │
+│  Task 3 ──> Worktree C (/vk/worktrees/task-3-branch/)               │
+│              └──> Agent runs in Worktree C                          │
+└─────────────────────────────────────────────────────────────────────┘
+
+Code Evidence:
+// crates/executors/src/executors/claude.rs:250
+command.current_dir(current_dir)  // Each task has its own worktree path
+
+// crates/services/src/services/worktree_manager.rs
+// Each task creates an isolated git worktree
+pub async fn create_worktree(repo_path, branch_name, worktree_path, ...)
+```
+
+### Current Behavior: Per-Task Spawning
+
+<Warning>
+By default, Vibe Kanban spawns a new agent process for each task in its dedicated worktree. This has significant performance overhead.
+</Warning>
+
+```
+Task 1 → Create Worktree A → spawn npx claude-code (cwd: Worktree A) → Exit
+Task 2 → Create Worktree B → spawn npx claude-code (cwd: Worktree B) → Exit
+Task 3 → Create Worktree C → spawn npx claude-code (cwd: Worktree C) → Exit
+         ↑                        ↑
+         ~2s worktree creation    ~5-10s agent startup
+```
+
+### The Long-Running Agent Challenge
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  ❌ Problem: Long-running agent can't be in multiple worktrees    │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  Long-Running Agent Process (PID: 12345)                     │  │
+│  │  Current Dir: /home/user/agent-home (固定!)                   │  │
+│  │                                                               │  │
+│  │  Task 1 needs to work in: /vk/worktrees/task-1-branch/       │  │
+│  │  Task 2 needs to work in: /vk/worktrees/task-2-branch/       │  │
+│  │  Task 3 needs to work in: /vk/worktrees/task-3-branch/       │  │
+│  │                                                               │  │
+│  │  ❌ Agent's current_dir cannot be dynamically changed        │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Recommended Approaches
+
+<Info>
+**Best Practice: 1 Task = 1 Toolbox** - This perfectly aligns with vibe-kanban's architecture and eliminates the worktree switching problem entirely.
+</Info>
+
+#### Approach 1: Per-Task Toolbox (Recommended)
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  1 Task = 1 Worktree = 1 Toolbox                                   │
+│                                                                     │
+│  Task 1 ──> Worktree A (/vk/workspaces/task-1-branch/)              │
+│              └──> Toolbox A created in Worktree A                     │
+│                   └──> Agent runs with cwd: Worktree A                 │
+│                                                                     │
+│  Task 2 ──> Worktree B (/vk/workspaces/task-2-branch/)              │
+│              └──> Toolbox B created in Worktree B                     │
+│                   └──> Agent runs with cwd: Worktree B                 │
+│                                                                     │
+│  Task 3 (follow-up to Task 1)                                      │
+│              └──> Reuse Toolbox A (session fork)                     │
+│                   └──> Agent runs with cwd: Worktree A                 │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Workflow:**
+
+```bash
+# 1. Task created → Worktree created
+vk-cli create-task --project my-project --branch feature/login-fix
+
+# 2. Toolbox created in worktree directory
+toolbox create --container vk-task-abc123
+toolbox enter vk-task-abc123
+
+# 3. Agent starts in correct directory (no cd needed)
+$ npx -y @anthropic-ai/claude-code "fix login bug"
+
+# 4. Follow-up attempt reuses toolbox
+vk-cli create-attempt --task abc123 --follow-up
+# Enters existing toolbox, uses session fork (~0s overhead)
+```
+
+**Pros:**
+- ✅ Perfect alignment with VK architecture
+- ✅ Agent starts in correct directory
+- ✅ Follow-up tasks have zero startup overhead
+- ✅ Complete isolation between tasks
+- ✅ Toolbox persists across task attempts
+
+**Cons:**
+- ⚠️ One toolbox per active task (memory usage)
+- ⚠️ Toolbox cleanup required after task completion
+
+#### Approach 2: Per-Task Spawning (Legacy)
+
+```
+Task 1 → Worktree A → spawn agent (cwd: Worktree A) → Execute → Exit
+Task 2 → Worktree B → spawn agent (cwd: Worktree B) → Execute → Exit
+```
+
+**Pros:** Complete isolation, works with all agents
+**Cons:** 5-10s startup overhead per task
+
+<Info>
+**Recommendation:** Use **Approach 1 (Per-Task Toolbox)** for all production deployments. It provides the best performance by leveraging session fork for follow-up tasks while maintaining proper worktree isolation.
+</Info>
+```
+
+#### Approach 2: Session Fork for Same Worktree
+
+For multiple tasks on the same worktree (e.g., follow-up tasks):
+
+```rust
+// Reuse agent session for same worktree
+async fn spawn_follow_up(
+    &self,
+    current_dir: &Path,  // Same worktree as before
+    session_id: &str,     // Resume existing session
+    ...
+) -> Result<SpawnedChild>
+```
+
+#### Approach 3: Hybrid - Pool for High-Volume Tasks
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Hybrid Approach                                                    │
+│                                                                     │
+│  High-Volume Tasks (simple, short-lived)                           │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │  Agent Pool (worktree-aware)                                 │   │
+│  │  - Long-running agents                                       │   │
+│  │  - Accept worktree path parameter                            │   │
+│  │  - Zero startup overhead                                      │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│  Complex Tasks (long-running, multi-step)                          │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │  Dedicated Agent (per task)                                  │   │
+│  │  - Spawned in worktree                                       │   │
+│  │  - Full isolation                                            │   │
+│  │  - Can use session fork for follow-ups                        │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Configuration
+
+```toml
+# config/agent-pool.toml
+[pool]
+enable = true
+mode = "worktree_aware"  # Agents accept worktree path parameter
+
+[pool.agents.claude_code]
+min = 2
+max = 5
+idle_timeout = 300  # Terminate after 5min idle
+
+[pool.routing]
+# High-volume simple tasks → pool
+complex_tasks = "dedicated"  # Spawn dedicated agent
+simple_tasks = "pooled"      # Use agent pool
+```
+
+### Comparison: Approaches
+
+| Aspect | Per-Task Only | Worktree-Aware Pool | Hybrid |
+|--------|---------------|---------------------|--------|
+| **Startup Time** | 5-10s | ~0ms | Varies |
+| **Worktree Isolation** | Perfect | Good | Perfect |
+| **Resource Efficiency** | Low | High | Medium |
+| **Complexity** | Simple | Medium | High |
+| **Best For** | Development | High-volume simple tasks | Production mixed workload |
+
+<Info>
+**Recommendation:** Use **worktree-aware agent pool** for high-volume simple tasks (code edits, fixes). Use **dedicated agents** for complex, long-running tasks that benefit from full worktree isolation.
+</Info>
+
+## Claude Code + OpenCode Collaboration Pattern
+
+This section details the recommended collaboration pattern between Claude Code and OpenCode on each node.
+
+### Role Division
+
+| Component | Role | Strengths |
+|-----------|------|-----------|
+| **Claude Code** | Decision Center & Orchestrator | Multi-agent coordination, task decomposition, complex workflows |
+| **OpenCode** | Execution Worker | Easy model switching, multiple LLM providers, focused code tasks |
+
+### Why This Combination Works
+
+**Claude Code as Orchestrator:**
+- Strong built-in support for coordinating multiple tools and agents
+- Can break down complex tasks into subtasks
+- Good at understanding context and dependencies
+- Handles retries and error recovery gracefully
+
+**OpenCode as Worker:**
+- Supports 20+ LLM providers (Kimi, DeepSeek, GPT-4, Qwen, Claude, etc.)
+- Easy model switching via configuration
+- Optimized for code-focused tasks
+- Lightweight and fast for individual operations
+
+### Detailed Workflow
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Node A Internal Flow                            │
+│                                                                         │
+│  Incoming Task                                                          │
+│  "Fix authentication bug"                                               │
+│       │                                                                 │
+│       ▼                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │              Claude Code (Decision Center)                      │   │
+│  │                                                                  │   │
+│  │  1. Analyze task type → debugging/rust/authentication           │   │
+│  │  2. Identify affected files → src/auth/*.rs                     │   │
+│  │  3. Decide on strategy →                                       │   │
+│  │     - Use OpenCode + Claude model (good at debugging)           │   │
+│  │     - Or decompose into subtasks for different models           │   │
+│  │                                                                  │   │
+│  │  4. Create execution plan:                                      │   │
+│  │     - Subtask 1: Analyze logs (OpenCode + Kimi)                 │   │
+│  │     - Subtask 2: Fix code (OpenCode + Claude)                   │   │
+│  │     - Subtask 3: Write tests (OpenCode + DeepSeek)              │   │
+│  └────────────────────────┬───────────────────────────────────────┘   │
+│                           │                                            │
+│                           ▼                                            │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                   OpenCode Worker Pool                          │   │
+│  │                                                                  │   │
+│  │  Subtask 1               Subtask 2              Subtask 3        │   │
+│  │  ┌────────────┐         ┌────────────┐         ┌────────────┐   │   │
+│  │  │ OpenCode   │         │ OpenCode   │         │ OpenCode   │   │   │
+│  │  │ + Kimi     │         │ + Claude   │         │ + DeepSeek │   │   │
+│  │  │           │         │           │         │           │   │   │
+│  │  │ Analyze   │         │ Fix       │         │ Write     │   │   │
+│  │  │ logs      │         │ code      │         │ tests     │   │   │
+│  │  └───────────┘         └───────────┘         └───────────┘   │   │
+│  │         │                     │                     │         │   │
+│  │         └─────────────────────┴─────────────────────┘         │   │
+│  │                               │                               │   │
+│  ▼                               ▼                               ▼   │
+│  Result 1:                 Result 2:                    Result 3:    │
+│  "Error in                 "Fixed                    "Tests        │   │
+│  password                  password                  passing"      │   │
+│  validation"               validation"                              │   │
+│                           │                                            │
+│                           ▼                                            │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │              Claude Code (Aggregation)                          │   │
+│  │                                                                  │   │
+│  │  - Collect results from all subtasks                             │   │
+│  │  - Verify consistency                                            │   │
+│  │  - Create final PR/commit                                        │   │
+│  │  - Report to Central Orchestrator                                │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Configuration Example
+
+```toml
+# config/node-a/decision-center.toml
+
+[decision_center]
+scheduler = "claude_code"
+# Claude Code coordinates but doesn't execute code directly
+mode = "orchestrator_only"
+
+[workers.opencode]
+# Multiple OpenCode instances with different models
+instances = ["kimi", "deepseek", "gpt4", "qwen", "claude"]
+
+# Each instance can be configured independently
+[workers.opencode.instances.kimi]
+name = "kimi-worker"
+model = "moonshot-v1-8k"
+provider = "moonshot"
+max_concurrent = 3
+specialties = ["code_edit", "quick_fixes", "refactoring_small"]
+
+[workers.opencode.instances.claude]
+name = "claude-worker"
+model = "claude-3-5-sonnet-20241022"
+provider = "anthropic"
+max_concurrent = 2
+specialties = ["debugging", "complex_logic", "architecture_decisions"]
+
+[workers.opencode.instances.deepseek]
+name = "deepseek-worker"
+model = "deepseek-coder"
+provider = "deepseek"
+max_concurrent = 5
+specialties = ["code_review", "analysis", "explanation"]
+
+[workers.opencode.instances.gpt4]
+name = "gpt4-worker"
+model = "gpt-4-turbo"
+provider = "openai"
+max_concurrent = 1
+specialties = ["architecture", "design", "documentation"]
+
+[workers.opencode.instances.qwen]
+name = "qwen-worker"
+model = "qwen-coder-plus"
+provider = "aliyun"
+max_concurrent = 5
+specialties = ["documentation", "comments", "test_generation"]
+
+# Routing rules (can be overridden by Claude Code analysis)
+[routing]
+default = "kimi"
+
+[routing.rules]
+code_edit = "kimi"
+code_review = "deepseek"
+architecture = "gpt4"
+documentation = "qwen"
+debugging = "claude"
+test_generation = "deepseek"
+refactoring = "kimi"
+```
+
+### API Flow
+
+```rust
+// crates/services/src/services/decision_center/flow.rs
+
+pub async fn process_incoming_task(task: Task) -> Result<TaskResult> {
+    // Step 1: Claude Code analyzes the task
+    let plan = claude_code_client
+        .create_execution_plan(&task)
+        .await?;
+
+    // Step 2: Execute subtasks through OpenCode workers
+    let mut results = Vec::new();
+    for subtask in plan.subtasks {
+        let worker = opencode_pool
+            .get_worker(&subtask.recommended_model)?;
+
+        let result = worker
+            .execute(subtask)
+            .await?;
+
+        results.push(result);
+    }
+
+    // Step 3: Claude Code aggregates results
+    let final_result = claude_code_client
+        .aggregate_results(results)
+        .await?;
+
+    // Step 4: Report to central orchestrator
+    central_client
+        .report_completion(task.id, final_result)
+        .await?;
+
+    Ok(final_result)
+}
+```
+
+### MCP Integration
+
+Claude Code communicates with OpenCode workers via MCP:
+
+```bash
+# OpenCode worker exposes MCP server
+opencode --mcp-server --port 3011 --model kimi
+opencode --mcp-server --port 3012 --model claude
+opencode --mcp-server --port 3013 --model deepseek
+
+# Claude Code connects to workers via MCP configuration
+# ~/.config/claude-code/mcp.json
+{
+  "mcpServers": {
+    "opencode-kimi": {
+      "command": "node",
+      "args": ["-e", "require('mcp-client').connect({port: 3011})"]
+    },
+    "opencode-claude": {
+      "command": "node",
+      "args": ["-e", "require('mcp-client').connect({port: 3012})"]
+    },
+    "opencode-deepseek": {
+      "command": "node",
+      "args": ["-e", "require('mcp-client').connect({port: 3013})"]
+    }
+  }
+}
+```
+
+## Deployment Models
+
+### Model 1: Single Machine, Multiple Agents
+
+<Info>
+This is the default deployment mode. All agents run on the same machine as Vibe Kanban, managed through Toolbx or Docker.
+</Info>
+
+**Use cases:**
+- Personal development
+- Small teams (1-5 developers)
+- Resource-constrained environments
+
+**Pros:**
+- Simple setup
+- Low latency
+- Easy debugging
+
+**Cons:**
+- Limited scalability
+- Single point of failure
+- Resource contention
+
+### Model 2: Agent Worker Nodes
+
+Agents run on separate worker machines, coordinated by a central Vibe Kanban instance.
+
+```
+Coordinator Machine:
+┌─────────────────────────────────────────┐
+│  Vibe Kanban Server                     │
+│  PostgreSQL                             │
+│  Redis (task queue)                     │
+└─────────────────────────────────────────┘
+                    │
+        ┌───────────┴───────────┐
+        │                       │
+        ▼                       ▼
+┌───────────────┐       ┌───────────────┐
+│ Worker Node 1 │       │ Worker Node 2 │
+│ ┌───────────┐ │       │ ┌───────────┐ │
+│ │ Claude    │ │       │ │ OpenCode  │ │
+│ │ Code Agent│ │       │ │ Agent     │ │
+│ └───────────┘ │       │ └───────────┘ │
+│ ┌───────────┐ │       │ ┌───────────┐ │
+│ │ Cursor    │ │       │ │ Gemini    │ │
+│ │ Agent     │ │       │ │ Agent     │ │
+│ └───────────┘ │       │ └───────────┘ │
+└───────────────┘       └───────────────┘
+```
+
+**Use cases:**
+- Medium teams (5-20 developers)
+- GPU/CPU specialization
+- Resource isolation
+
+**Pros:**
+- Better resource utilization
+- Agent isolation
+- Can scale workers independently
+
+**Cons:**
+- Network latency
+- More complex setup
+
+### Model 3: Multi-Region Deployment
+
+Vibe Kanban and agents deployed across multiple geographic regions.
+
+```
+Region US-East:
+┌─────────────────────────────┐
+│ VK Server (Regional)        │
+│ PostgreSQL (Regional)       │
+│ Agent Workers (US-based)    │
+└─────────────────────────────┘
+
+Region EU-West:
+┌─────────────────────────────┐
+│ VK Server (Regional)        │
+│ PostgreSQL (Regional)       │
+│ Agent Workers (EU-based)    │
+└─────────────────────────────┘
+
+Region AP-South:
+┌─────────────────────────────┐
+│ VK Server (Regional)        │
+│ PostgreSQL (Regional)       │
+│ Agent Workers (APAC-based)  │
+└─────────────────────────────┘
+            │
+            ▼
+┌─────────────────────────────┐
+│   Global Database Sync      │
+│   (PostgreSQL logical       │
+│    replication / Citus)     │
+└─────────────────────────────┘
+```
+
+**Use cases:**
+- Global teams
+- Compliance requirements (data residency)
+- Performance optimization
+
+**Pros:**
+- Low latency per region
+- Data sovereignty
+- Regional failure isolation
+
+**Cons:**
+- Complex data synchronization
+- Higher operational costs
+- Multi-region expertise required
+
+## Service Discovery
+
+### Static Configuration
+
+For simple setups, configure worker addresses explicitly:
+
+```toml
+# config/workers.toml
+[[workers]]
+id = "worker-1"
+address = "192.168.1.10:3001"
+agents = ["claude_code", "cursor"]
+region = "us-east-1"
+
+[[workers]]
+id = "worker-2"
+address = "192.168.1.11:3001"
+agents = ["opencode", "gemini"]
+region = "us-east-1"
+```
+
+### Dynamic Discovery (Redis)
+
+Workers register themselves with Redis:
+
+```bash
+# Worker startup
+redis-cli HSET workers worker-1 '{"address": "192.168.1.10:3001", "agents": ["claude_code"], "last_seen": 1704067200}'
+
+# Coordinator queries workers
+redis-cli HGETALL workers
+```
+
+### Consul Integration
+
+```bash
+# Worker registers service
+consul services register -name=vk-worker-1 \
+  -address=192.168.1.10 -port=3001 \
+  -meta=agents=claude_code,cursor
+
+# Coordinator discovers workers
+consul catalog services -filter vk-worker
+```
+
+## Communication Patterns
+
+### Pattern 1: Direct gRPC
+
+```
+Coordinator ──gRPC──> Worker
+     │                       │
+     └───Result<─────────────┘
+```
+
+**Implementation:**
+```rust
+// Coordinator
+async fn execute_task_on_worker(
+    worker_addr: &str,
+    task: Task,
+) -> Result<TaskResult> {
+    let client = WorkerClient::connect(worker_addr).await?;
+    let response = client.execute_task(task).await?;
+    Ok(response.into_inner())
+}
+```
+
+### Pattern 2: Message Queue (Redis Streams)
+
+```
+Coordinator ──PUSH──> Redis Queue ───POLL──> Workers
+     │                                                    │
+     └────────────────────Results<────────────────────────┘
+```
+
+**Implementation:**
+```bash
+# Coordinator publishes task
+redis-cli XADD tasks:claude_code * \
+  task_id="123" \
+  prompt="fix the bug" \
+  workspace="/path/to/project"
+
+# Worker processes tasks
+redis-cli XREAD GROUP group consumer COUNT 1 STREAMS tasks:claude_code >
+```
+
+### Pattern 3: Webhook Callback
+
+```
+Coordinator ──HTTP POST──> Worker
+                             │
+                             └───HTTP POST──> Callback URL
+```
+
+**Implementation:**
+```bash
+# Coordinator sends task
+curl -X POST http://worker-1:3001/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "123", "prompt": "...", "callback": "http://coordinator:3000/callback"}'
+
+# Worker calls back when done
+curl -X POST http://coordinator:3000/callback \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "123", "result": "..."}'
+```
+
+## State Management
+
+### Database Strategy
+
+| Component | Storage | Replication |
+|-----------|---------|-------------|
+| **Tasks** | PostgreSQL | Logical replication |
+| **Workspace metadata** | PostgreSQL | Logical replication |
+| **Agent logs** | PostgreSQL / S3 | Async replication |
+| **File artifacts** | S3 / MinIO | Cross-region replication |
+
+### Distributed Transaction Pattern
+
+```rust
+use tokio::sync::RwLock;
+
+struct DistributedTaskManager {
+    local_db: PgPool,
+    redis: RedisClient,
+}
+
+impl DistributedTaskManager {
+    async fn create_task(&self, task: Task) -> Result<()> {
+        // Begin transaction
+        let mut tx = self.local_db.begin().await?;
+
+        // Insert into local DB
+        task.insert(&mut *tx).await?;
+
+        // Publish to task queue
+        self.redis
+            .publish(&format!("tasks:{}", task.id), &task.to_json())
+            .await?;
+
+        // Commit
+        tx.commit().await?;
+        Ok(())
+    }
+}
+```
+
+## High Availability
+
+### Coordinator Failover
+
+```bash
+# Health check endpoint
+GET /health
+
+# Returns: {"status": "healthy", "role": "primary" | "standby"}
+
+# Load balancer checks health every 5s
+# Fails over to standby if primary fails
+```
+
+### Worker Recovery
+
+```bash
+# Worker heartbeat
+redis-cli SET workers:worker-1:heartbeat 1704067200 EX 10
+
+# Coordinator monitors heartbeats
+redis-cli GET workers:worker-1:heartbeat
+# If expired, mark worker as unavailable
+```
+
+### Database Replication
+
+```sql
+-- Primary
+CREATE PUBLICATION vk_pub FOR TABLE tasks, projects, attempts;
+
+-- Standby
+CREATE SUBSCRIPTION vk_sub
+CONNECTION 'host=primary dbname=vibe_kanban'
+PUBLICATION vk_pub;
+```
+
+## Configuration
+
+### Coordinator Configuration
+
+```toml
+# config/coordinator.toml
+[server]
+host = "0.0.0.0"
+port = 3000
+
+[database]
+url = "postgresql://vk:password@postgres-primary:5432/vibe_kanban"
+pool_size = 20
+
+[replication]
+standby_urls = [
+    "postgresql://vk:password@postgres-standby-1:5432/vibe_kanban",
+    "postgresql://vk:password@postgres-standby-2:5432/vibe_kanban"
+]
+
+[workers]
+discovery_mode = "redis"  # or "static" or "consul"
+redis_addr = "redis:6379"
+
+[messaging]
+provider = "redis"  # or "kafka" or "rabbitmq"
+redis_addr = "redis:6379"
+```
+
+### Worker Configuration
+
+```toml
+# config/worker.toml
+[worker]
+id = "worker-1"
+region = "us-east-1"
+
+[coordinator]
+address = "http://coordinator:3000"
+heartbeat_interval = 5  # seconds
+
+[agents]
+enabled = ["claude_code", "cursor"]
+
+[agents.claude_code]
+toolbox = "vk-agent-claude-code"
+mcp_port = 3001
+max_concurrent_tasks = 3
+
+[storage]
+workspace_base = "/workspaces"
+artifact_store = "s3://vk-artifacts"
+```
+
+## Deployment
+
+### Docker Compose (Multi-Node)
+
+```yaml
+# docker-compose.distributed.yml
+version: '3.8'
+
+services:
+  coordinator:
+    image: ghcr.io/oliveagle/vibe-kanban/backend:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - VIBE_MODE=coordinator
+      - DATABASE_URL=postgresql://vk:password@postgres:5432/vibe_kanban
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      - postgres
+      - redis
+
+  worker-1:
+    image: ghcr.io/oliveagle/vibe-kanban/worker:latest
+    environment:
+      - VIBE_MODE=worker
+      - WORKER_ID=worker-1
+      - COORDINATOR_ADDR=http://coordinator:3000
+      - AGENTS=claude_code,cursor
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - workspaces:/workspaces
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=vk
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=vibe_kanban
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+
+volumes:
+  postgres-data:
+  redis-data:
+  workspaces:
+```
+
+### Kubernetes Deployment
+
+```yaml
+# k8s/coordinator-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vk-coordinator
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: vk-coordinator
+  template:
+    metadata:
+      labels:
+        app: vk-coordinator
+    spec:
+      containers:
+      - name: coordinator
+        image: ghcr.io/oliveagle/vibe-kanban/backend:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: VIBE_MODE
+          value: "coordinator"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: vk-secrets
+              key: database-url
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vk-coordinator
+spec:
+  selector:
+    app: vk-coordinator
+  ports:
+  - port: 3000
+  type: LoadBalancer
+```
+
+```yaml
+# k8s/worker-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vk-worker
+spec:
+  replicas: 5  # Scale based on load
+  selector:
+    matchLabels:
+      app: vk-worker
+  template:
+    metadata:
+      labels:
+        app: vk-worker
+    spec:
+      containers:
+      - name: worker
+        image: ghcr.io/oliveagle/vibe-kanban/worker:latest
+        env:
+        - name: VIBE_MODE
+          value: "worker"
+        - name: COORDINATOR_ADDR
+          value: "http://vk-coordinator:3000"
+        - name: AGENTS
+          value: "claude_code,opencode"
+        volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+      volumes:
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+```
+
+## Monitoring
+
+### Health Checks
+
+```bash
+# Coordinator health
+GET /health
+# Response: {"status": "healthy", "database": "up", "redis": "up", "workers": 5}
+
+# Worker health
+GET /health
+# Response: {"status": "healthy", "coordinator": "reachable", "agents": {"claude_code": "ready"}}
+```
+
+### Metrics
+
+```prometheus
+# Worker availability
+sum(vibe_kanban_workers_available) by (region)
+
+# Task queue depth
+vibe_kanban_task_queue_depth{agent="claude_code"}
+
+# Task completion time
+histogram_quantile(0.95, rate(vibe_kanban_task_duration_seconds_bucket[5m]))
+```
+
+### Logging
+
+```bash
+# Centralized logging with Loki
+grafana-loki \
+  --config.file=loki-config.yaml
+
+# Workers ship logs to Loki
+vector --config vector-worker.toml
+```
+
+## Security
+
+### Network Security
+
+```bash
+# Firewall rules
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="10.0.0.0/8" service name="vibe-kanban" accept'
+sudo firewall-cmd --reload
+```
+
+### Authentication
+
+```rust
+// JWT authentication for worker-coordinator communication
+use jsonwebtoken::{encode, decode, Header, Validation};
+
+struct WorkerToken {
+    worker_id: String,
+    capabilities: Vec<String>,
+    exp: usize,
+}
+
+// Coordinator validates worker requests
+fn validate_worker_token(token: &str) -> Result<WorkerToken> {
+    decode::<WorkerToken>(token, &SECRET_KEY, &Validation::default())
+}
+```
+
+### secrets Management
+
+```bash
+# Use HashiCorp Vault
+vault kv put secret/vibe-kanban/worker-1 \
+  api_key="sk-..." \
+  database_url="postgresql://..."
+```
+
+## Troubleshooting
+
+### Worker Not Registering
+
+```bash
+# Check worker logs
+journalctl -u vibe-kanban-worker -f
+
+# Check Redis registration
+redis-cli HGETALL workers
+
+# Test coordinator connectivity
+curl http://coordinator:3000/health
+```
+
+### Task Not Executing
+
+```bash
+# Check task queue
+redis-cli LLEN tasks:claude_code
+
+# Check worker availability
+redis-cli GET workers:worker-1:heartbeat
+
+# View task status
+curl http://coordinator:3000/api/tasks/123
+```
+
+### Database Replication Lag
+
+```sql
+-- Check replication status
+SELECT * FROM pg_stat_replication;
+
+-- Lag in bytes
+SELECT pg_size_pretty(pg_wal_lsn_diff(
+  sent_lsn, write_lsn
+)) AS replication_lag
+FROM pg_stat_replication;
+```
+
+## Comparison
+
+| Aspect | Single Node | Worker Nodes | Multi-Region |
+|--------|-------------|--------------|--------------|
+| **Complexity** | Low | Medium | High |
+| **Scalability** | Limited | Good | Excellent |
+| **Resilience** | Low | Medium | High |
+| **Latency** | Minimal | Low | Varies |
+| **Cost** | Low | Medium | High |
+| **Team Size** | 1-5 | 5-50 | 50+ |
+
+<Info>
+Start with single-node deployment. Add worker nodes when you hit resource limits. Consider multi-region only when you have strong compliance or latency requirements.
+</Info>
+
+## Related Topics
+
+- [Toolbox Integration](/advanced/toolbox-integration) - Running agents in Toolbx containers
+- [Container Orchestration](/advanced/container-orchestration) - Managing containers through VK
+- [MCP Server Configuration](/integrations/mcp-server-configuration) - Setting up communication

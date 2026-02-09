@@ -1,0 +1,526 @@
+---
+title: "Toolbox Integration"
+description: "Run AI coding agents in isolated Toolbx containers for enhanced security and environment consistency"
+icon: "https://www.vibekanban.com/images/icons/toolbox.svg"
+---
+
+## Overview
+
+Vibe Kanban supports integrating with [Fedora Toolbx](https://docs.fedoraproject.org/en-US/atomic-desktops/toolbox/) to run AI coding agents in isolated container environments. This provides:
+
+- **Environment isolation** - Each agent runs in its own container with specific dependencies
+- **Security boundaries** - Agents operate within restricted container boundaries
+- **Reproducible environments** - Team members can share identical toolbox configurations
+- **Resource management** - Better control over agent resource usage
+
+<Warning>
+Toolbx is primarily designed for Fedora-based systems. If you're using other distributions, consider using standard Docker/Podman containers or Dev Containers instead.
+</Warning>
+
+## Architecture
+
+The Toolbox integration follows an orchestration pattern where Vibe Kanban manages multiple agent containers:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Host System (Fedora)                        │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              Vibe Kanban (Orchestrator)                 │   │
+│  │  - Manages agent lifecycle                              │   │
+│  │  - Routes tasks to appropriate agents                   │   │
+│  │  - Monitors agent status                                │   │
+│  └─────────────────────┬───────────────────────────────────┘   │
+│                        │                                        │
+│        ┌───────────────┼───────────────┐                       │
+│        │               │               │                       │
+│        ▼               ▼               ▼                       │
+│  ┌──────────┐   ┌──────────┐   ┌──────────┐                  │
+│  │ Toolbox  │   │ Toolbox  │   │ Toolbox  │                  │
+│  │   #1     │   │   #2     │   │   #3     │                  │
+│  │          │   │          │   │          │                  │
+│  │  Claude  │   │ OpenCode │   │  Cursor  │                  │
+│  │  Code    │   │  Agent   │   │  Agent   │                  │
+│  └──────────┘   └──────────┘   └──────────┘                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Quick Start
+
+### Prerequisites
+
+<Tabs>
+<Tab title="Fedora">
+```bash
+# Install toolbox
+sudo dnf install toolbox
+
+# Verify installation
+toolbox --version
+```
+</Tab>
+
+<Tab title="Ubuntu/Debian">
+```bash
+# Toolbx is Fedora-specific. Use podman directly:
+sudo apt install podman
+
+# Or consider Dev Containers with VS Code
+```
+</Tab>
+</Tabs>
+
+### Step 1: Create Agent Toolboxes
+
+```bash
+# Create toolbox for Claude Code
+toolbox create --container vk-agent-claude-code --image fedora:39
+
+# Create toolbox for OpenCode
+toolbox create --container vk-agent-opencode --image fedora:39
+
+# Create toolbox for Cursor Agent
+toolbox create --container vk-agent-cursor --image fedora:39
+```
+
+### Step 2: Install Agents in Toolboxes
+
+```bash
+# Enter Claude Code toolbox
+toolbox enter vk-agent-claude-code
+
+# Install dependencies
+sudo dnf install -y nodejs npm git
+npm install -g pnpm
+
+# Install Claude Code CLI
+npx -y @anthropic-ai/claude-code --install
+
+# Exit when done
+exit
+
+# Repeat for other agents...
+```
+
+### Step 3: Configure Vibe Kanban
+
+```bash
+# Start Vibe Kanban with toolbox awareness
+export VK_TOOLBOX_MODE=true
+export VK_AGENT_CLAUDE_CODE_TOOLBOX=vk-agent-claude-code
+export VK_AGENT_OPENCODE_TOOLBOX=vk-agent-opencode
+
+npx vibe-kanban
+```
+
+## Recommended Pattern: 1 Task = 1 Toolbox
+
+<Info>
+This is the **recommended deployment pattern** for using Toolbx with Vibe Kanban. Each task gets its own dedicated toolbox, created in the task's worktree directory.
+</Info>
+
+<Note>
+**Discussion Record:** This pattern emerged from analysis of vibe-kanban's 1-task-1-worktree architecture and the limitation that AI coding agents (Claude Code, OpenCode) cannot dynamically switch working directories at runtime. The 1-task-1-toolbox approach aligns perfectly with both constraints.
+
+**Key Insight:** Since agents' working directories are fixed at process startup, and each task requires its own isolated worktree, creating a dedicated toolbox per task (in its worktree) ensures agents start in the correct directory without any workarounds.
+
+**Related Repository:** `git@github.com:oliveagle/toolbox-opencode.git` - Available for reference if needed for implementation.
+</Note>
+
+### Why This Pattern Works
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  1 Task = 1 Worktree = 1 Toolbox (Perfect Alignment)                  │
+│                                                                       │
+│  Task ABC123                                                          │
+│    ├─> Worktree: /vk/workspaces/task-abc123-branch/                  │
+│    └─> Toolbox: vk-task-abc123 (started in Worktree)                 │
+│        └─> Agent runs with correct cwd automatically                  │
+│                                                                       │
+│  Task DEF456 (Follow-up to ABC123)                                   │
+│    ├─> Same Worktree                                                 │
+│    └─> Same Toolbox → Session Fork (~0s startup) ✅                   │
+│                                                                       │
+│  Task XYZ789                                                          │
+│    ├─> Worktree: /vk/workspaces/task-xyz789-branch/                  │
+│    └─> Toolbox: vk-task-xyz789 (new toolbox)                         │
+│        └─> Agent runs with correct cwd automatically                  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Implementation
+
+**When a task is created:**
+
+```bash
+# 1. Vibe Kanban creates worktree
+vk-cli create-task --project my-project --branch feature/new-ui
+
+# 2. Vibe Kanban creates toolbox in worktree
+toolbox create --container vk-task-abc123 --image fedora:39
+
+# 3. Toolbox is entered from the worktree directory
+cd /vk/workspaces/task-abc123-branch/
+toolbox enter --container vk-task-abc123
+
+# 4. Agent starts in correct directory (no cd needed!)
+npx -y @anthropic-ai/claude-code "implement the feature"
+```
+
+**For follow-up attempts:**
+
+```bash
+# Toolbox already exists, just enter it
+toolbox enter vk-task-abc123
+
+# Use session fork for zero startup overhead
+npx -y @anthropic-ai/claude-code \
+  --fork-session \
+  --resume abc123-session-id \
+  "add tests for the feature"
+```
+
+### Configuration
+
+```toml
+# config/toolbox-per-task.toml
+[toolbox]
+auto_create = true       # Auto-create toolbox when task is created
+auto_enter = true         # Auto-enter toolbox before running agent
+cleanup_after = "7d"     # Cleanup toolbox 7 days after task completion
+persist_follow_ups = true # Keep toolbox for follow-up attempts
+
+[toolbox.naming]
+pattern = "vk-task-{task_id}"  # Toolbox naming pattern
+
+[toolbox.image]
+default = "fedora:39"
+claude_code = "ghcr.io/oliveagle/vibe-kanban/claude-code:latest"
+opencode = "ghcr.io/oliveagle/vibe-kanban/opencode:latest"
+
+[toolbox.mounts]
+source = "/vk/workspaces"
+target = "/workspace"
+```
+
+### Lifecycle Management
+
+```bash
+# List all task toolboxes
+toolbox list | grep "vk-task-"
+
+# Enter a specific task's toolbox
+toolbox enter vk-task-abc123
+
+# Stop a task's toolbox (free resources)
+toolbox stop vk-task-abc123
+
+# Delete a task's toolbox (after task completion)
+toolbox rm vk-task-abc123
+
+# Cleanup old toolboxes (> 30 days since task completion)
+vk-cli toolbox cleanup --older-than 30d
+```
+
+### Benefits
+
+| Benefit | Description |
+|---------|-------------|
+| **Zero Configuration** | Agent starts in correct directory automatically |
+| **Session Persistence** | Follow-up tasks use session fork (~0s overhead) |
+| **Perfect Isolation** | Each task has its own isolated environment |
+| **Resource Management** | Toolboxes can be stopped/started independently |
+| **Debugging** | Enter toolbox to debug agent directly |
+
+### Comparison
+
+| Aspect | Global Toolbox | Per-Task Toolbox |
+|--------|---------------|------------------|
+| **Setup** | One-time setup | Per-task setup |
+| **Directory** | Wrong directory (needs cd) | Correct directory automatically |
+| **Follow-up Speed** | Medium | Fast (session fork) |
+| **Isolation** | Low | High |
+| **Resource Usage** | Low | Medium (scales with active tasks) |
+| **Cleanup** | Not needed | Required per task |
+
+<Info>
+**Recommendation:** Use **Per-Task Toolbox** pattern for all Vibe Kanban deployments. It provides the best developer experience and performance by aligning with VK's 1-task-1-worktree architecture.
+</Info>
+
+## Agent Communication
+
+Vibe Kanban communicates with agent toolboxes through multiple channels:
+
+### MCP (Model Context Protocol)
+
+<Info>
+MCP is the recommended communication method as it provides structured, typed communication between Vibe Kanban and agents.
+</Info>
+
+```bash
+# Agent toolbox exposes MCP server on localhost
+toolbox enter vk-agent-claude-code
+claude-code --mcp-server --port 3001
+```
+
+### Podman Exec
+
+For direct command execution:
+
+```bash
+# Execute command in toolbox from host
+podman exec vk-agent-claude-code npx @anthropic-ai/claude-code "fix the login bug"
+```
+
+### Shared Volume
+
+Both Vibe Kanban and agent toolboxes mount the same project directory:
+
+```bash
+# Vibe Kanban mount
+--mount /path/to/project:/workspace
+
+# Agent toolbox mount (automatic via toolbx)
+# Project accessible at /workspace inside toolbox
+```
+
+## Configuration
+
+### Agent Toolbox Definition
+
+Create `~/.config/vibe-kanban/toolboxes.json`:
+
+```json
+{
+  "toolboxes": {
+    "claude_code": {
+      "name": "vk-agent-claude-code",
+      "image": "fedora:39",
+      "agent_type": "CLAUDE_CODE",
+      "command": "npx -y @anthropic-ai/claude-code",
+      "mcp_port": 3001,
+      "mounts": [
+        {
+          "source": "/home/user/projects",
+          "target": "/workspace"
+        }
+      ],
+      "environment": {
+        "RUST_LOG": "debug",
+        "CLAUDE_API_KEY": "${CLAUDE_API_KEY}"
+      }
+    },
+    "opencode": {
+      "name": "vk-agent-opencode",
+      "image": "fedora:39",
+      "agent_type": "OPENCODE",
+      "command": "opencode",
+      "mcp_port": 3002,
+      "mounts": [
+        {
+          "source": "/home/user/projects",
+          "target": "/workspace"
+        }
+      ]
+    }
+  }
+}
+```
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `VK_TOOLBOX_MODE` | Enable toolbox integration | `false` |
+| `VK_TOOLBOX_BASE_IMAGE` | Base image for new toolboxes | `fedora:39` |
+| `VK_TOOLBOX_AUTO_CREATE` | Auto-create missing toolboxes | `false` |
+
+## Agent Lifecycle
+
+Vibe Kanban manages agent toolboxes through the following lifecycle:
+
+### Starting an Agent
+
+```bash
+# Via API
+curl -X POST http://localhost:3000/api/agents/start \
+  -H "Content-Type: application/json" \
+  -d '{"agent_type": "CLAUDE_CODE", "toolbox": "vk-agent-claude-code"}'
+
+# Or automatically when creating a task attempt
+```
+
+### Stopping an Agent
+
+```bash
+# Stop the toolbox container
+toolbox stop vk-agent-claude-code
+
+# Or via API
+curl -X POST http://localhost:3000/api/agents/stop/claude_code
+```
+
+### Agent Status
+
+```bash
+# List running toolboxes
+toolbox list
+
+# Or via API
+curl http://localhost:3000/api/agents/status
+```
+
+## Security Considerations
+
+### Isolation Boundaries
+
+Toolbx provides the following isolation:
+
+| Boundary | Protection |
+|----------|------------|
+| **Filesystem** | Agent only accesses mounted volumes |
+| **Process** | Agent processes run in container namespace |
+| **Network** | Can use host network or isolated network |
+| **User** | Runs as container user (not root by default) |
+
+### Best Practices
+
+<Check>
+Follow these security practices when using toolbox integration:
+</Check>
+
+- **Never mount sensitive directories** like `~/.ssh` or `~/.gnupg`
+- **Use read-only mounts** where possible: `--ro`
+- **Restrict network access** with custom toolbox networks
+- **Rotate API keys** stored in toolbox environments
+- **Monitor resource usage** with `podman stats`
+
+### Firewall Configuration
+
+```bash
+# Create firewall rules for agent toolboxes
+sudo firewall-cmd --permanent --new-zone toolbox-agents
+sudo firewall-cmd --permanent --zone toolbox-agents --add-source 10.0.0.0/8
+sudo firewall-cmd --reload
+```
+
+## Troubleshooting
+
+### Toolbox Won't Start
+
+```bash
+# Check if toolbox exists
+toolbox list
+
+# Recreate if needed
+toolbox rm vk-agent-claude-code
+toolbox create --container vk-agent-claude-code --image fedora:39
+```
+
+### Agent Not Responding
+
+```bash
+# Check toolbox is running
+podman ps | grep claude-code
+
+# Enter toolbox to debug
+toolbox enter vk-agent-claude-code
+
+# Check agent logs
+journalctl -u vibe-kanban-agent -f
+```
+
+### Volume Mount Issues
+
+```bash
+# Verify mount inside toolbox
+toolbox enter vk-agent-claude-code
+ls -la /workspace
+
+# Check SELinux context (if using SELinux)
+ls -Z /path/to/project
+```
+
+### Network Communication Problems
+
+```bash
+# Test MCP server connectivity
+curl http://localhost:3001/health
+
+# Check firewall rules
+sudo firewall-cmd --list-all
+
+# Verify port is listening
+podman exec vk-agent-claude-code netstat -tlnp
+```
+
+## Advanced Configuration
+
+### Custom Toolbox Images
+
+Create a custom Dockerfile for agent toolboxes:
+
+```dockerfile
+# Dockerfile.toolbx
+FROM fedora:39
+
+# Install common dependencies
+RUN dnf install -y \
+    nodejs npm git vim ripgrep fd-find jq \
+    && dnf clean all
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install Claude Code
+RUN npm install -g @anthropic-ai/claude-code
+
+# Set up workspace
+WORKDIR /workspace
+
+# Default command
+CMD ["/bin/bash"]
+```
+
+Build and use:
+
+```bash
+podman build -f Dockerfile.toolbx -t vk-toolbox-claude:latest
+toolbox create --image vk-toolbox-claude:latest --container vk-agent-claude-code
+```
+
+### Resource Limits
+
+Configure resource limits for agent toolboxes:
+
+```bash
+# Create toolbox with memory limit
+podman run -d \
+  --name vk-agent-claude-code \
+  --memory=2g \
+  --cpus=2 \
+  --mount type=bind,source=/path/to/project,destination=/workspace \
+  vk-toolbox-claude:latest
+```
+
+## Comparison: Toolbox vs Alternatives
+
+| Feature | Toolbox | Docker | Dev Containers |
+|---------|---------|--------|----------------|
+| **Setup complexity** | Low | Medium | High |
+| **VS Code integration** | No | Yes | Yes |
+| **Fedora integration** | Best | Good | Medium |
+| **Portability** | Low | High | High |
+| **Resource overhead** | Low | Medium | Medium |
+
+<Info>
+Choose Toolbox if you're on Fedora and want a lightweight, integrated solution. Choose Dev Containers if you need VS Code integration and cross-platform support.
+</Info>
+
+## Related Topics
+
+- [Container Orchestration](/advanced/container-orchestration) - Managing containers through Vibe Kanban
+- [Distributed Architecture](/advanced/distributed-architecture) - Multi-node agent deployment
+- [MCP Server Configuration](/integrations/mcp-server-configuration) - Setting up MCP communication

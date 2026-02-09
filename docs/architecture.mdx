@@ -1,10 +1,24 @@
 ---
-description: Vibe Kanban 项目架构概览
+description: Vibe Kanban 项目架构概览 - 单机版与 SaaS 版的完整技术架构说明
 ---
 
 # Architecture Overview
 
-Vibe Kanban is a full-stack application built with **Rust** (backend) and **React + TypeScript** (frontend). This document provides a comprehensive overview of the project architecture, technology stack, and codebase organization.
+Vibe Kanban is a full-stack application built with **Rust** (backend) and **React + TypeScript** (frontend). This document provides a comprehensive overview of the project architecture, including both **standalone/local deployment** and **SaaS/cloud deployment** modes.
+
+## Deployment Modes
+
+Vibe Kanban supports two deployment modes:
+
+| Feature | Standalone (Local) | SaaS (Cloud) |
+|---------|-------------------|---------------|
+| **Backend** | `crates/server` | `crates/remote` |
+| **Frontend** | `frontend/` | `remote-frontend/` |
+| **Database** | SQLite | PostgreSQL |
+| **Authentication** | GitHub OAuth (personal) | JWT + OAuth (organizations) |
+| **Storage** | Local filesystem | S3/R2 compatible |
+| **Multi-tenancy** | No | Yes (Organizations) |
+| **Use Case** | Individual developers | Teams & Enterprises |
 
 ## Technology Stack
 
@@ -13,7 +27,8 @@ Vibe Kanban is a full-stack application built with **Rust** (backend) and **Reac
 | Component | Technology | Version |
 |-----------|------------|---------|
 | Web Framework | Axum | 0.8.4 |
-| Database | SQLite (WAL mode) + SQLx | 0.8.6 |
+| Database | SQLite (Standalone) / PostgreSQL (SaaS) | - |
+| ORM | SQLx | 0.8.6 |
 | Async Runtime | Tokio | - |
 | Git Integration | git2-rs | 0.20.3 |
 | HTTP Client | reqwest | 0.12 |
@@ -45,39 +60,65 @@ Vibe Kanban is a full-stack application built with **Rust** (backend) and **Reac
 ```
 vibe-kanban/
 ├── crates/                    # Rust workspace
-│   ├── server/                # API server + CLI binary
-│   ├── db/                    # SQLx database models + migrations
-│   ├── executors/             # AI agent executor implementations
-│   ├── services/              # Business logic services
-│   ├── utils/                 # Shared utilities
-│   ├── deployment/            # Deployment abstraction trait
-│   ├── local-deployment/      # Local deployment implementation
-│   ├── remote/                # Remote/cloud deployment
-│   └── review/                # Code review functionality
+│   ├── server/              # Standalone API server (individual users)
+│   ├── db/                  # Shared database models + migrations
+│   ├── executors/           # AI agent executor implementations
+│   ├── services/            # Shared business logic services
+│   ├── utils/               # Shared utilities
+│   ├── deployment/           # Deployment abstraction trait
+│   ├── local-deployment/     # Local deployment implementation
+│   ├── remote/              # SaaS API server (multi-tenant, organizations)
+│   └── review/              # Code review functionality
 │
-├── frontend/                  # React + TypeScript frontend
+├── frontend/                 # Standalone frontend (individual users)
 │   └── src/
-│       ├── components/        # React components
-│       ├── pages/             # Page components
-│       ├── contexts/          # React contexts
-│       ├── hooks/             # Custom React hooks
-│       ├── stores/            # Zustand stores
-│       ├── i18n/              # i18next configuration
-│       └── utils/             # Utility functions
+│       ├── components/       # React components
+│       ├── pages/            # Page components
+│       ├── contexts/         # React contexts
+│       ├── hooks/            # Custom React hooks
+│       ├── stores/           # Zustand stores
+│       ├── i18n/             # i18next configuration
+│       └── utils/            # Utility functions
 │
-├── remote-frontend/           # Remote deployment UI
-├── shared/                    # Generated TypeScript types (DO NOT EDIT)
-├── npx-cli/                   # NPX package for distribution
-├── scripts/                   # Development helper scripts
-├── docs/                      # Documentation files
-└── assets/                    # Packaged assets
+├── remote-frontend/         # SaaS frontend (code review, teams)
+│
+├── shared/                   # Shared TypeScript types (generated)
+├── npx-cli/                  # NPX CLI package
+├── scripts/                  # Development helper scripts
+├── docs/                     # Documentation files
+└── assets/                   # Packaged assets
+```
+
+## Deployment Mode Mapping
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      User Interfaces                         │
+├───────────────────────────┬─────────────────────────────────┤
+│   frontend/              │         remote-frontend/        │
+│   (Standalone)            │         (SaaS/Cloud)           │
+│   Single user, local DB  │   Multi-tenant, organizations  │
+└───────────┬───────────────┴───────────────┬─────────────────┘
+            │                               │
+            ▼                               ▼
+┌───────────────────────────┬─────────────────────────────────┐
+│     crates/server         │          crates/remote          │
+│   SQLite, local auth      │   PostgreSQL, JWT, OAuth       │
+│   Personal use case       │   Teams & enterprises           │
+└───────────────────────────┴─────────────────────────────────┘
 ```
 
 ## Rust Crates
 
-### server
+### server (Standalone Mode)
 
-**Purpose**: Main API server, web routes, and MCP configuration
+**Purpose**: Main API server for individual/local users
+
+**Characteristics**:
+- SQLite database (WAL mode, 120 second busy timeout)
+- GitHub OAuth authentication (personal)
+- Local file system storage
+- Single-user / single-machine deployment
 
 **Key Files**:
 - `crates/server/src/main.rs` - Entry point, server initialization
@@ -91,11 +132,37 @@ vibe-kanban/
   - `containers.rs` - Container/service management
   - `approvals.rs` - Approval workflows
 
+### remote (SaaS/Cloud Mode)
+
+**Purpose**: Multi-tenant API server for teams and enterprises
+
+**Characteristics**:
+- PostgreSQL database (instead of SQLite)
+- JWT + OAuth authentication (supports organizations)
+- S3/R2 compatible object storage
+- GitHub App integration for repository access
+- Email notifications
+- AES-GCM encryption for sensitive data
+- Multi-tenant with organization support
+
+**Key Files**:
+- `crates/remote/src/main.rs` - Entry point
+- `crates/remote/src/app.rs` - Application state and middleware
+- `crates/remote/src/routes/` - API route handlers
+  - `organizations.rs` - Organization/workspace management
+  - `oauth.rs` - OAuth + GitHub App integration
+  - `projects.rs`, `tasks.rs`, `task_attempts.rs` - Core task management
+  - `shared_tasks.rs` - Cross-organization task sharing
+  - `repo.rs` - Repository management
+- `crates/remote/src/db/` - PostgreSQL database layer
+- `crates/remote/src/github_app/` - GitHub App integration
+- `crates/remote/src/auth/` - JWT authentication
+- `crates/remote/src/mail.rs` - Email notifications
+- `crates/remote/src/r2.rs` - S3/R2 object storage
+
 ### db
 
-**Purpose**: SQLite database with SQLx, migrations, and data models
-
-**Database**: SQLite with WAL mode, 120 second busy timeout
+**Purpose**: Shared SQLx database models and migrations
 
 **Models** (`crates/db/src/models/`):
 - `task.rs` - Task model with status (Todo, InProgress, InReview, Done, Cancelled)
@@ -111,6 +178,10 @@ vibe-kanban/
 - `tag.rs` - Task tags
 - `image.rs` - Screenshots/images
 - `execution_process_logs.rs` - Process output logs
+
+**Note**: Migrations are located in:
+- `crates/server/migrations/` - Standalone mode migrations
+- `crates/remote/migrations/` - SaaS mode migrations (PostgreSQL)
 
 ### executors
 
@@ -165,21 +236,9 @@ vibe-kanban/
 
 ### local-deployment
 
-**Purpose**: Local deployment implementation (default for NPX)
+**Purpose**: Local deployment implementation (default for NPX standalone mode)
 
 Uses local SQLite and local process execution.
-
-### remote
-
-**Purpose**: Remote/cloud deployment with PostgreSQL and object storage
-
-**Features**:
-- PostgreSQL instead of SQLite
-- S3/R2 compatible storage (AWS SDK)
-- JWT authentication
-- GitHub App integration
-- Email notifications
-- AES-GCM encryption
 
 ### utils
 
@@ -195,7 +254,11 @@ Uses local SQLite and local process execution.
 
 ## Frontend Structure
 
-### Key Routes
+### frontend (Standalone Mode)
+
+Full-featured frontend for individual users with local database.
+
+**Key Routes**:
 
 | Route | Component | Purpose |
 |-------|-----------|---------|
@@ -206,8 +269,7 @@ Uses local SQLite and local process execution.
 | `/projects/:projectId/tasks/:taskId/attempts/:attemptId/full` | FullAttemptLogs | Full-screen logs (VS Code style) |
 | `/settings/*` | Settings | Settings pages |
 
-### Component Structure
-
+**Component Structure**:
 ```
 frontend/src/components/
 ├── dialogs/                   # Modal dialogs
@@ -226,6 +288,27 @@ frontend/src/components/
 ├── diff/                      # Diff visualization
 └── ide/                       # IDE integration
 ```
+
+### remote-frontend (SaaS Mode)
+
+Lightweight frontend for SaaS code review and team collaboration.
+
+**Purpose**:
+- Code review workflows for shared tasks
+- Organization/team management
+- Integration with `crates/remote` API
+
+**Technology**:
+- React + TypeScript + Vite
+- Tailwind CSS
+- Designed for cloud deployment
+
+## API Base URLs
+
+| Mode | Frontend | API URL |
+|------|----------|---------|
+| Standalone | `frontend/` | `http://localhost:3000` (local server) |
+| SaaS | `remote-frontend/` | `VK_SHARED_API_BASE` (configurable) |
 
 ## Core Data Models
 
@@ -296,33 +379,86 @@ Individual turns within an execution with logs, diffs, and repo state snapshots.
 
 ## Database Patterns
 
+### Standalone Mode (server)
 - **SQLite with WAL mode** for concurrent access
 - **120 second busy timeout** to handle locks
 - **SQLx with compile-time query verification** (via `prepare-db` script)
-- **Migration-based schema management**
-- **Models as active records** with static query methods
+- Migration-based schema management
+- Models as active records with static query methods
+- Data stored in `~/.local/share/vibe-kanban/`
+
+### SaaS Mode (remote)
+- **PostgreSQL** for multi-tenant data isolation
+- **SQLx** with PostgreSQL queries
+- Organization-based data separation
+- Connection pooling for scalability
+- Migrations in `crates/remote/migrations/`
+
+## Authentication Comparison
+
+| Aspect | Standalone | SaaS |
+|--------|-----------|------|
+| **Method** | GitHub OAuth (personal) | JWT + OAuth (organizations) |
+| **Tokens** | Session-based | JWT bearer tokens |
+| **Users** | Single user per instance | Multi-user organizations |
+| **GitHub** | Personal access token | GitHub App integration |
+
+## Storage Comparison
+
+| Aspect | Standalone | SaaS |
+|--------|-----------|------|
+| **Type** | Local filesystem | S3/R2 compatible |
+| **Images** | Local disk | Object storage |
+| **Secrets** | Local credentials.json | AES-GCM encryption |
 
 ## Key Commands
 
-```bash
-# Development
-pnpm run dev                 # Start frontend + backend (auto ports)
-pnpm run backend:dev:watch   # Backend with cargo-watch
-pnpm run frontend:dev        # Frontend dev server
+### Standalone Mode Development
 
+```bash
+# Start frontend + backend (auto ports)
+pnpm run dev
+
+# Backend with cargo-watch
+pnpm run backend:dev:watch
+
+# Frontend dev server
+pnpm run frontend:dev
+```
+
+### SaaS Mode Development
+
+```bash
+# Start remote API (requires .env.remote)
+cd crates/remote
+cargo run --bin remote
+
+# Or via Docker Compose
+docker compose --env-file .env.remote -f crates/remote/docker-compose.yml up --build
+
+# Start remote-frontend with SaaS API
+export VK_SHARED_API_BASE=http://localhost:8081
+cd remote-frontend
+pnpm run dev
+```
+
+### Shared Commands
+
+```bash
 # Type Generation
 pnpm run generate-types      # Generate TS types from Rust
 
 # Database
-pnpm run prepare-db          # Prepare SQLx (offline mode)
+pnpm run prepare-db          # Prepare SQLx (offline mode) - Standalone
+cd crates/remote && sqlx migrate run # SaaS PostgreSQL migrations
 
 # Testing
 cargo test --workspace       # Run Rust tests
-pnpm run check               # Type check frontend + backend
+pnpm run check              # Type check frontend + backend
 
 # Build
-pnpm run build:npx           # Build NPX package
-pnpm pack                    # (in npx-cli/) Pack NPX package
+pnpm run build:npx          # Build NPX package (standalone)
+pnpm pack                   # (in npx-cli/) Pack NPX package
 ```
 
 ## Supported AI Agents
@@ -339,6 +475,7 @@ pnpm pack                    # (in npx-cli/) Pack NPX package
 
 ## Notable Features
 
+### Standalone Mode Features
 1. **Multi-Agent Support** - Unified management of multiple AI coding agents
 2. **Parallel/Sequential Execution** - Run multiple agents at once or in sequence
 3. **Git Integration** - Worktrees, branches, commits, PR creation
@@ -348,6 +485,24 @@ pnpm pack                    # (in npx-cli/) Pack NPX package
 7. **MCP Configuration** - Model Context Protocol server configuration
 8. **Approval Workflows** - Require approvals before executing agents
 9. **PR Monitoring** - Monitor GitHub PRs for task completion
-10. **Task Sharing** - Share tasks between projects/organizations
-11. **Auto-Project Setup** - Auto-discover local git repos for new users
-12. **Remote Deployment** - SSH support for opening projects on remote servers
+10. **Auto-Project Setup** - Auto-discover local git repos for new users
+11. **Remote SSH** - Open projects on remote servers via SSH
+
+### SaaS Mode Features (on top of standalone)
+1. **Multi-Tenancy** - Organizations and team workspaces
+2. **Centralized Billing** - Team management and resource allocation
+3. **Shared Tasks** - Cross-organization task collaboration
+4. **Enhanced Security** - AES-GCM encryption, JWT auth
+5. **GitHub App Integration** - Seamless repository access
+6. **Code Review UI** - Dedicated remote-frontend for review workflows
+7. **Email Notifications** - Team alerts and updates
+
+## Deployment Comparison
+
+| Aspect | Standalone | SaaS |
+|--------|-----------|------|
+| **Installation** | `npx vibe-kanban` | Cloud-hosted |
+| **Data Storage** | Local (SQLite) | Cloud (PostgreSQL) |
+| **Updates** | Self-managed | Automatic |
+| **Scaling** | Single machine | Horizontal |
+| **Backup** | User-managed | Automatic |
